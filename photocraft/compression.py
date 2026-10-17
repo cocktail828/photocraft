@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -233,6 +234,9 @@ def save_verified(result: EncodedImage, path: str | Path, *, overwrite=False):
                 raise OSError("磁盘文件校验失败。")
         if overwrite:
             os.replace(temp_name, path)
+        elif sys.platform == "win32":
+            # Windows rename refuses existing destinations and also works without hard links.
+            os.rename(temp_name, path)
         else:
             # Exclusive creation via link avoids a check/replace race overwriting a new file.
             os.link(temp_name, path)

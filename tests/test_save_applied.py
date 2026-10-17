@@ -145,6 +145,7 @@ def test_applied_output_settings_survive_edits_without_including_new_draft_param
     tool.keep_alpha.setChecked(False)
     tool.select_tool("crop")
     tool.crop_ratio.setCurrentIndex(tool.crop_ratio.findData(0))
+    tool.crop_allow_resize.setChecked(True)
     tool.apply_crop()
     wait_for(app, lambda: tool.live_size_result is not None and not tool.jobs)
     assert tool.save_options().format == "PNG" and tool.save_options().keep_alpha

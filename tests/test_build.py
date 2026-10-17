@@ -1,4 +1,4 @@
-"""Exercise package identity wiring while stubbing only platform build executables."""
+"""Exercise package identity while stubbing native builders and platform-only links."""
 
 import importlib.util
 import json
@@ -38,6 +38,15 @@ def test_native_packages_embed_and_use_the_git_identity(tmp_path, monkeypatch, p
     monkeypatch.setattr(module.shutil, "which", lambda name: "ISCC" if name.startswith("ISCC") else None)
     monkeypatch.chdir(tmp_path)
     invoked = []
+    links = []
+
+    def create_linux_link(path, target, target_is_directory=False):
+        # A simulated Linux build must not require Windows symlink privileges.
+        links.append((path, target))
+        path.touch()
+
+    if platform == "linux":
+        monkeypatch.setattr(Path, "symlink_to", create_linux_link)
 
     def run(args):
         invoked.append([str(arg) for arg in args])
@@ -60,6 +69,7 @@ def test_native_packages_embed_and_use_the_git_identity(tmp_path, monkeypatch, p
     )
     assert frozen["commit"] == identity.commit and frozen["tag"] == identity.tag
     if platform == "linux":
+        assert links == [(tmp_path / "build/deb/usr/bin/photocraft", "/opt/photocraft/PhotoCraft")]
         control = (tmp_path / "build/deb/DEBIAN/control").read_text()
         assert f"Version: {identity.deb_version}\n" in control
         assert (tmp_path / f"artifacts/PhotoCraft-{identity.display}-linux-amd64.deb").exists()

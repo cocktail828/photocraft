@@ -128,3 +128,48 @@ def test_wheel_and_source_archive_preserve_tag_without_git(repository):
         assert json.load(archive.extractfile(member)) == info
     assert build_info(installed, require_identity=True).display == "v1.2.3"
     assert not (package / "assets/build-info.json").exists()
+
+
+@pytest.mark.parametrize("kind", ["editable", "wheel"])
+def test_pep517_build_without_application_installed_or_source_on_import_path(repository, kind):
+    import shutil
+    import sys
+    import zipfile
+    from pathlib import Path
+
+    import setuptools
+
+    project = Path(__file__).resolve().parents[1]
+    for name in ("setup.py", "pyproject.toml", ".gitignore", "README.md"):
+        shutil.copy2(project / name, repository / name)
+    package = repository / "photocraft"
+    (package / "assets").mkdir(parents=True)
+    for name in ("__init__.py", "version.py"):
+        shutil.copy2(project / "photocraft" / name, package / name)
+    git(repository, "add", ".")
+    git(repository, "commit", "-m", "isolated build fixture")
+    git(repository, "tag", "v1.2.3")
+    output = repository / "dist"
+    output.mkdir()
+    # Disable site initialization so this project's editable-install .pth is never loaded.
+    backend_root = str(Path(setuptools.__file__).resolve().parent.parent)
+    script = (
+        "import sys, importlib.util\n"
+        f"sys.path.insert(0, {backend_root!r})\n"
+        "assert importlib.util.find_spec('photocraft') is None\n"
+        "from setuptools import build_meta\n"
+        f"build_meta.get_requires_for_build_{kind}()\n"
+        f"build_meta.prepare_metadata_for_build_{kind}({str(output)!r})\n"
+        f"build_meta.build_{kind}({str(output)!r})\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", script],
+        cwd=repository,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    with zipfile.ZipFile(next(output.glob("*.whl"))) as archive:
+        metadata = archive.read("photocraft-1.2.3.dist-info/METADATA").decode()
+        assert "Version: 1.2.3\n" in metadata

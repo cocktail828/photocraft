@@ -115,6 +115,49 @@ def test_corrupt_payload_never_replaces_existing_file(noise, tmp_path):
     assert not list(tmp_path.glob(".photocraft-*"))
 
 
+@pytest.mark.parametrize("outcome", ["saved", "conflict", "denied"])
+def test_windows_export_without_hard_links_preserves_other_files_and_cleans_up(
+    noise, tmp_path, monkeypatch, outcome
+):
+    from photocraft import compression
+
+    directory = tmp_path / "导出 图片"
+    directory.mkdir()
+    target = directory / "照片.jpg"
+    result = compress(noise, ExportOptions(width=20, height=30))
+    native_windows = compression.sys.platform == "win32"
+    rename = compression.os.rename
+    monkeypatch.setattr(compression.sys, "platform", "win32")
+
+    def no_links(*args, **kwargs):
+        raise OSError("This filesystem does not support hard links")
+
+    def publish(source, destination):
+        if outcome == "denied":
+            raise PermissionError("Access denied")
+        if outcome == "conflict":
+            target.write_bytes(b"another application's file")
+            if not native_windows:
+                # Emulate Windows' exclusive rename when running this regression on POSIX.
+                raise FileExistsError(destination)
+        return rename(source, destination)
+
+    monkeypatch.setattr(compression.os, "link", no_links)
+    monkeypatch.setattr(compression.os, "rename", publish)
+    if outcome == "saved":
+        save_verified(result, target)
+        assert target.read_bytes() == result.data
+    elif outcome == "conflict":
+        with pytest.raises(FileExistsError):
+            save_verified(result, target)
+        assert target.read_bytes() == b"another application's file"
+    else:
+        with pytest.raises(PermissionError):
+            save_verified(result, target)
+        assert not target.exists()
+    assert not list(directory.glob(".photocraft-*"))
+
+
 def test_reject_fake_extension_and_incorrect_metadata(noise, tmp_path):
     result = compress(noise, ExportOptions(width=20, height=30))
     with pytest.raises(ValueError, match="扩展名"):
