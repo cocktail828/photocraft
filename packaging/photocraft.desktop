@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=PhotoCraft
+Name[zh_CN]=PhotoCraft 照片工作台
+Comment=Offline photo editing and application photo preparation
+Comment[zh_CN]=离线照片编辑、证件照裁剪与按大小压缩
+Exec=/opt/photocraft/PhotoCraft %f
+Icon=photocraft
+Terminal=false
+Categories=Graphics;Photography;
+MimeType=image/jpeg;image/png;image/webp;image/bmp;image/tiff;
+StartupWMClass=PhotoCraft
+StartupNotify=true

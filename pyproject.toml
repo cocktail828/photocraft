@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "photocraft"
+dynamic = ["version"]
+description = "Offline photo preparation for applications and everyday editing"
+requires-python = ">=3.12"
+dependencies = ["PySide6-Essentials>=6.8,<7", "Pillow>=11,<13", "numpy>=2,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pyinstaller>=6,<7", "ruff>=0.11,<1"]
+
+[project.scripts]
+photocraft = "photocraft.app:main"
+
+[tool.setuptools.packages.find]
+include = ["photocraft*"]
+
+[tool.setuptools.package-data]
+photocraft = ["assets/*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "photocraft.version.__package_version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP"]
