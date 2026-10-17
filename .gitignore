@@ -51,3 +51,9 @@ photocraft/assets/build-info.json
 ._*
 Thumbs.db
 Desktop.ini
+
+# Browser tooling and local web-service data.
+node_modules/
+playwright-report/
+test-results/
+/data/

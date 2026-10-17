@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#4263eb" />
+    <meta
+      name="description"
+      content="PhotoCraft 图片工作台：裁剪、画笔、水印、增强和压缩。由您部署的 Python 服务处理图片。"
+    />
+    <title>PhotoCraft · 图片工作台</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
+    <link rel="apple-touch-icon" href="/assets/icon-256.png" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script type="module" src="/static/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="PhotoCraft 首页"
+        ><img
+          src="/assets/logo.svg"
+          alt="PhotoCraft"
+          width="36"
+          height="36"
+        /><span>PhotoCraft<small>图片工作台</small></span></a
+      >
+      <div
+        class="service-badge"
+        title="图片仅发送至当前连接的 PhotoCraft 服务处理"
+      >
+        <span class="status-dot"></span
+        ><span id="service-label">正在连接服务</span>
+      </div>
+      <div class="header-actions">
+        <button
+          id="help-button"
+          class="quiet help-button"
+          title="使用帮助与快捷键"
+          aria-label="使用帮助与快捷键"
+          aria-haspopup="dialog"
+          aria-controls="help-dialog"
+        >
+          <span data-icon="help"></span><span class="help-label">帮助</span>
+        </button>
+        <button
+          id="theme-button"
+          class="icon-button"
+          title="切换主题"
+          aria-label="切换主题"
+          data-icon="sun"
+        ></button
+        ><button id="save-button" class="primary save-button" disabled>
+          <span data-icon="download"></span>保存图片
+        </button>
+      </div>
+    </header>
+    <div class="app-body">
+      <aside class="sidebar" aria-label="图像功能">
+        <nav id="tools"></nav>
+        <div class="sidebar-bottom">
+          <span class="web-label">WEB</span
+          ><span id="version" title="版本由 Git tag 或 commit 生成">—</span>
+        </div>
+      </aside>
+      <main class="workspace">
+        <div class="workspace-toolbar">
+          <div class="filename">
+            <span data-icon="image"></span><span id="filename">未打开图片</span>
+          </div>
+          <div class="workspace-actions">
+            <button
+              id="undo-button"
+              class="icon-button"
+              title="撤销 · Ctrl+Z"
+              aria-label="撤销"
+              disabled
+              data-icon="undo"
+            ></button
+            ><button
+              id="redo-button"
+              class="icon-button"
+              title="重做 · Ctrl+Shift+Z"
+              aria-label="重做"
+              disabled
+              data-icon="redo"
+            ></button
+            ><span class="toolbar-separator"></span
+            ><button id="apply-button" class="primary" disabled>
+              <span data-icon="check"></span>应用
+            </button>
+          </div>
+        </div>
+        <div class="canvas-area" id="canvas-area">
+          <section id="welcome" class="welcome">
+            <span class="eyebrow">YOUR PHOTO. YOUR WORKSPACE.</span>
+            <h1>把照片，调整到刚刚好<span>。</span></h1>
+            <p class="welcome-subtitle">
+              从取景到修饰，从水印到压缩。让每一次调整都更从容。
+            </p>
+            <button class="dropzone" id="choose-image">
+              <span class="upload-symbol" data-icon="upload"></span
+              ><strong>拖入照片，或点击选择</strong
+              ><span>JPG、PNG、WEBP、BMP、TIFF</span
+              ><span class="upload-cta"
+                >选择一张图片 <span data-icon="chevron"></span
+              ></span>
+            </button>
+            <button id="demo-button" class="demo-button">
+              先用演示照片体验 <span data-icon="chevron"></span>
+            </button>
+            <div class="welcome-features">
+              <span><i data-icon="crop"></i>精准取景</span
+              ><span><i data-icon="shield"></i>由当前服务处理</span
+              ><span><i data-icon="undo"></i>随时撤销</span>
+            </div>
+          </section>
+          <canvas
+            id="editor-canvas"
+            hidden
+            aria-label="图片编辑画布"
+            tabindex="0"
+          ></canvas>
+          <div id="drop-overlay" hidden>
+            <span data-icon="upload"></span>松开以打开图片
+          </div>
+        </div>
+        <div class="canvas-controls">
+          <div>
+            <button
+              id="pan-button"
+              class="icon-button"
+              title="平移 · 按住空格"
+              aria-label="平移"
+              data-icon="hand"
+            ></button
+            ><button
+              id="fit-button"
+              class="icon-button"
+              title="适应窗口 · Ctrl+0"
+              aria-label="适应窗口"
+              data-icon="fit"
+            ></button
+            ><button id="actual-button" class="quiet">1:1</button
+            ><span id="zoom">—</span>
+          </div>
+          <div>
+            <button id="compare-button" class="quiet" disabled>
+              <span data-icon="compare"></span>按住查看原图</button
+            ><label class="checker-toggle"
+              ><input type="checkbox" id="checker" checked />透明网格</label
+            >
+          </div>
+        </div>
+        <footer class="image-info">
+          <section>
+            <div class="info-title">
+              预览<span id="preview-badge">未打开图片</span>
+            </div>
+            <div id="preview-info" class="info-content">
+              打开图片后查看尺寸和编码信息
+            </div>
+          </section>
+          <section>
+            <div class="info-title">当前<span>保存使用此结果</span></div>
+            <div id="current-info" class="info-content">
+              只有已应用的操作会进入保存结果
+            </div>
+          </section>
+        </footer>
+      </main>
+      <aside class="properties" id="properties" aria-label="功能设置"></aside>
+    </div>
+    <div class="statusbar">
+      <span
+        ><span id="busy-dot" class="status-dot"></span
+        ><span id="status">正在连接服务…</span></span
+      ><span>图片不会发送至第三方服务</span>
+    </div>
+    <input
+      id="file-input"
+      type="file"
+      accept="image/jpeg,image/png,image/webp,image/bmp,image/tiff,.tif,.tiff"
+      hidden
+    />
+    <dialog id="color-dialog" aria-labelledby="color-title">
+      <form id="color-form">
+        <div class="dialog-header">
+          <h2 id="color-title">选择颜色</h2>
+          <button
+            type="button"
+            class="icon-button dialog-close"
+            aria-label="关闭"
+            data-icon="close"
+          ></button>
+        </div>
+        <p class="muted">预定义颜色</p>
+        <div
+          id="color-presets"
+          class="color-palette"
+          role="group"
+          aria-label="预定义颜色"
+        ></div>
+        <div class="color-value-row">
+          <span id="color-preview" aria-hidden="true"></span>
+          <label class="stacked"
+            >十六进制色值<input
+              id="color-hex"
+              type="text"
+              value="#ffffff"
+              maxlength="7"
+              pattern="#[0-9a-fA-F]{6}"
+              required
+              spellcheck="false"
+              autocomplete="off"
+              aria-label="十六进制色值"
+          /></label>
+        </div>
+        <div class="range-field">
+          <label class="range-label" for="color-r"
+            ><span>红色 R</span><output id="color-r-value">255</output></label
+          ><input id="color-r" type="range" min="0" max="255" value="255" />
+        </div>
+        <div class="range-field">
+          <label class="range-label" for="color-g"
+            ><span>绿色 G</span><output id="color-g-value">255</output></label
+          ><input id="color-g" type="range" min="0" max="255" value="255" />
+        </div>
+        <div class="range-field">
+          <label class="range-label" for="color-b"
+            ><span>蓝色 B</span><output id="color-b-value">255</output></label
+          ><input id="color-b" type="range" min="0" max="255" value="255" />
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="secondary dialog-close">取消</button
+          ><button type="submit" class="primary">使用此颜色</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-title">
+      <div class="dialog-header">
+        <h2 id="help-title">使用帮助</h2>
+        <button
+          type="button"
+          class="icon-button dialog-close"
+          aria-label="关闭帮助"
+          data-icon="close"
+        ></button>
+      </div>
+      <section class="help-section" aria-labelledby="help-start">
+        <h3 id="help-start">开始编辑</h3>
+        <ol>
+          <li>
+            在欢迎页选择图片、拖入图片，或按 Ctrl+O 打开。支持
+            JPG、PNG、WEBP、BMP、TIFF。
+          </li>
+          <li>
+            从左侧选择工具，调整右侧参数。裁剪、背景色、旋转、水印和压缩先预览，点击上方「应用」后生效；增强调整即应用，画笔、马赛克和局部模糊松开后即应用。
+          </li>
+          <li>
+            底部「预览」显示正在查看的效果，「当前」显示已应用的结果。点击「保存图片」下载当前结果，未应用的预览不会保存。
+          </li>
+        </ol>
+      </section>
+      <section class="help-section" aria-labelledby="help-tools">
+        <h3 id="help-tools">操作提示</h3>
+        <ul>
+          <li>
+            裁剪时拖动取景框调整位置；自由裁剪可拖动边角或输入像素。模板默认按指定像素裁剪，像素不足时需勾选「允许缩放」；放大可能模糊，缩小会损失细节。
+          </li>
+          <li>
+            背景色只填充透明区域，不会自动抠图。不透明照片可先用画笔中的橡皮擦擦除背景。
+          </li>
+          <li>
+            水印整页重复平铺，默认替换已有水印；勾选「允许多重水印」后可叠加。图像压缩只调整编码格式和画质，保持当前像素尺寸。
+          </li>
+          <li>
+            按住「查看原图」对比，松开恢复编辑视图；「1:1」按原像素显示，适应窗口按钮可完整显示图片。
+          </li>
+        </ul>
+      </section>
+      <section class="help-section" aria-labelledby="help-shortcuts">
+        <h3 id="help-shortcuts">快捷键</h3>
+        <p class="muted">
+          macOS 将 Ctrl 换为 ⌘ Command。输入文字时，撤销优先作用于文字。
+        </p>
+        <table class="shortcut-table">
+          <thead>
+            <tr>
+              <th scope="col">操作</th>
+              <th scope="col">按键</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>打开图片</td>
+              <td><kbd>Ctrl + O</kbd></td>
+            </tr>
+            <tr>
+              <td>保存当前结果</td>
+              <td><kbd>Ctrl + S</kbd></td>
+            </tr>
+            <tr>
+              <td>撤销</td>
+              <td><kbd>Ctrl + Z</kbd></td>
+            </tr>
+            <tr>
+              <td>重做</td>
+              <td><kbd>Ctrl + Shift + Z</kbd></td>
+            </tr>
+            <tr>
+              <td>适应窗口</td>
+              <td><kbd>Ctrl + 0</kbd></td>
+            </tr>
+            <tr>
+              <td>平移画布</td>
+              <td><kbd>空格 + 拖动</kbd></td>
+            </tr>
+            <tr>
+              <td>缩放画布</td>
+              <td>鼠标滚轮</td>
+            </tr>
+            <tr>
+              <td>关闭弹窗</td>
+              <td><kbd>Esc</kbd></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+      <p class="help-note">
+        图片由当前连接的服务处理。刷新页面或重启服务会丢失编辑会话，闲置 1
+        小时也会过期，请及时下载保存。
+      </p>
+      <div class="dialog-actions">
+        <button type="button" class="primary dialog-close">知道了</button>
+      </div>
+    </dialog>
+    <dialog id="error-dialog">
+      <div class="dialog-header">
+        <h2>暂时无法完成</h2>
+        <button
+          class="icon-button dialog-close"
+          aria-label="关闭"
+          data-icon="close"
+        ></button>
+      </div>
+      <p id="error-message"></p>
+      <div class="dialog-actions">
+        <button class="primary dialog-close">知道了</button>
+      </div>
+    </dialog>
+    <div id="toast" role="status" hidden></div>
+  </body>
+</html>

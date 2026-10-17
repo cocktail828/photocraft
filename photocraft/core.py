@@ -363,23 +363,31 @@ class Document:
         self.base, self.watermarks = cropped, marks
 
     def transform(self, angle=0, flip=None, expand=True):
+        base, marks = transform_pixels(self.base, self.watermarks, angle, flip, expand)
         self.checkpoint()
-        old_w, old_h = self.base.size
+        self.base, self.watermarks = base, marks
+
+
+def transform_pixels(base, watermarks, angle=0, flip=None, expand=True):
+    """Transform immutable pixels and copied editable watermarks without history copies."""
+    watermarks = [copy(mark) for mark in watermarks]
+    old_w, old_h = base.size
+    if flip:
+        base = ImageOps.mirror(base) if flip == "horizontal" else ImageOps.flip(base)
+    else:
+        base = base.rotate(angle, expand=expand, resample=Image.Resampling.BICUBIC)
+    # Keep watermark objects editable through geometry transformations.
+    for mark in watermarks:
+        layer = mark.bitmap()
+        cx, cy = mark.x + layer.width / 2, mark.y + layer.height / 2
         if flip:
-            self.base = ImageOps.mirror(self.base) if flip == "horizontal" else ImageOps.flip(self.base)
+            cx, cy = (old_w - cx, cy) if flip == "horizontal" else (cx, old_h - cy)
         else:
-            self.base = self.base.rotate(angle, expand=expand, resample=Image.Resampling.BICUBIC)
-        # Keep watermark objects editable through geometry transformations.
-        for mark in self.watermarks:
-            layer = mark.bitmap()
-            cx, cy = mark.x + layer.width / 2, mark.y + layer.height / 2
-            if flip:
-                cx, cy = (old_w - cx, cy) if flip == "horizontal" else (cx, old_h - cy)
-            else:
-                theta = math.radians(angle)
-                dx, dy = cx - old_w / 2, cy - old_h / 2
-                cx = self.base.width / 2 + dx * math.cos(theta) + dy * math.sin(theta)
-                cy = self.base.height / 2 - dx * math.sin(theta) + dy * math.cos(theta)
-                mark.angle += angle
-            layer = mark.bitmap()
-            mark.x, mark.y = cx - layer.width / 2, cy - layer.height / 2
+            theta = math.radians(angle)
+            dx, dy = cx - old_w / 2, cy - old_h / 2
+            cx = base.width / 2 + dx * math.cos(theta) + dy * math.sin(theta)
+            cy = base.height / 2 - dx * math.sin(theta) + dy * math.cos(theta)
+            mark.angle += angle
+        layer = mark.bitmap()
+        mark.x, mark.y = cx - layer.width / 2, cy - layer.height / 2
+    return base, watermarks

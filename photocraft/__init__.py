@@ -1,4 +1,4 @@
-"""PhotoCraft: a local, offline photo workbench."""
+"""PhotoCraft: a self-hosted photo workbench."""
 
 from .version import build_info
 

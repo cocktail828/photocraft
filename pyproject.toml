@@ -5,27 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "photocraft"
 dynamic = ["version"]
-description = "Offline photo preparation for applications and everyday editing"
+description = "Self-hosted photo editing with a browser workspace and Python image processing"
 requires-python = ">=3.12"
-dependencies = ["PySide6-Essentials>=6.8,<7", "Pillow>=11,<13", "numpy>=2,<3"]
+dependencies = ["fastapi>=0.143,<1", "uvicorn>=0.54,<1", "Pillow>=12,<13", "numpy>=2,<3"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "pyinstaller>=6,<7", "ruff>=0.11,<1"]
+dev = ["pytest>=8,<10", "httpx>=0.28,<1", "ruff>=0.11,<1"]
+desktop = ["PySide6-Essentials>=6.8,<7", "pyinstaller>=6,<7"]
 
 [project.scripts]
-photocraft = "photocraft.app:main"
+photocraft = "photocraft.web_server:main"
+photocraft-desktop = "photocraft.app:main"
 
 [tool.setuptools.packages.find]
 include = ["photocraft*"]
 
 [tool.setuptools.package-data]
-photocraft = ["assets/*"]
+photocraft = ["assets/*", "web/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "photocraft.version.__package_version__"}
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/web", "tests/test_core.py", "tests/test_compression.py", "tests/test_config.py", "tests/test_version.py", "tests/test_rendering.py"]
 
 [tool.ruff]
 line-length = 110

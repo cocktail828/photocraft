@@ -1,0 +1,23 @@
+services:
+  photocraft:
+    image: photocraft:local
+    build:
+      context: .
+      args:
+        VCS_REF: ${PHOTOCRAFT_COMMIT:-}
+        VERSION_TAG: ${PHOTOCRAFT_TAG:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - photocraft-config:/data
+    environment:
+      PHOTOCRAFT_MAX_UPLOAD_MB: "40"
+      PHOTOCRAFT_MAX_PIXELS: "24000000"
+      PHOTOCRAFT_MAX_SESSIONS: "4"
+      PHOTOCRAFT_SESSION_TTL: "3600"
+      PHOTOCRAFT_HISTORY_MB: "128"
+    restart: unless-stopped
+    init: true
+    mem_limit: 2g
+volumes:
+  photocraft-config:

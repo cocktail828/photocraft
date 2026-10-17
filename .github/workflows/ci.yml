@@ -1,4 +1,4 @@
-name: Test
+name: Web checks
 on:
   push:
     branches: ['**']
@@ -6,13 +6,13 @@ on:
 permissions:
   contents: read
 jobs:
-  test:
+  python:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-22.04, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
-      QT_QPA_PLATFORM: offscreen
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v6
@@ -22,13 +22,53 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - name: Install Linux runtime libraries
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgl1 libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 fonts-noto-cjk
-      - run: python -m pip install -r requirements-lock.txt
+          cache-dependency-path: |
+            requirements-lock.txt
+            requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
       - run: python -m pip install --no-deps -e .
       - run: ruff check .
       - run: python -m pytest -q
-      - run: python scripts/generate_icons.py
+      - run: python scripts/smoke_web.py --spawn
+  container:
+    runs-on: ubuntu-22.04
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Build service image
+        run: docker build --build-arg VCS_REF="$GITHUB_SHA" --tag photocraft:check .
+      - name: Run image
+        run: docker run -d --name photocraft-check -p 127.0.0.1:8000:8000 photocraft:check
+      - name: Verify HTTP workflow and image runtime
+        run: |
+          python scripts/smoke_web.py --url http://127.0.0.1:8000
+          docker exec photocraft-check python -c "import importlib.util; assert importlib.util.find_spec('PySide6') is None"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - name: Verify browser interactions
+        env:
+          PHOTOCRAFT_BASE_URL: http://127.0.0.1:8000
+          PHOTOCRAFT_SCREENSHOT_DIR: artifacts/web-ui
+        run: npm run test:web
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: web-ui
+          path: artifacts/web-ui
+          if-no-files-found: ignore
+      - name: Container logs
+        if: always()
+        run: docker logs photocraft-check
+      - name: Stop container
+        if: always()
+        run: docker rm -f -v photocraft-check

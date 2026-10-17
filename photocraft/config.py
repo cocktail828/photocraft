@@ -1,4 +1,4 @@
-"""Editable TOML in PhotoCraft.conf, shared by source and native bundles."""
+"""Editable TOML in PhotoCraft.conf, shared by the service and optional desktop UI."""
 
 from __future__ import annotations
 
@@ -126,11 +126,11 @@ def toml_text(data, *, state=False):
         ["# PhotoCraft 窗口状态；个人偏好与裁剪模板请编辑 PhotoCraft.conf。"]
         if state
         else [
-            "# PhotoCraft 配置（UTF-8 TOML）。修改后通过「配置 → 重新加载配置」生效。",
+            "# PhotoCraft 配置（UTF-8 TOML）。由部署管理员编辑，修改后重启服务生效。",
             "# 每个 [[crop.templates]] 块对应一个下拉模板，可直接修改或删除。",
             "# 仅保留自由裁剪与按比例裁剪：将 [crop] 下的 templates 设为 []。",
             "# 模板锁定输出像素 width_px / height_px；图像压缩仅设置格式、画质与编码选项。",
-            "# watermark.color：上次水印颜色；colors.custom：颜色窗口的 16 个自定义色槽（#RRGGBB）。",
+            "# watermark.color：默认水印颜色；colors.custom：16 个预定义颜色（#RRGGBB）。",
         ]
     )
 

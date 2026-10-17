@@ -1,3 +1,3 @@
-from .app import main
+from .web_server import main
 
 main()
