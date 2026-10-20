@@ -340,7 +340,7 @@ class Editors:
         self.items = {}
         self.lock = threading.RLock()
         self.limit = int(os.environ.get("PHOTOCRAFT_MAX_SESSIONS", "4"))
-        self.ttl = int(os.environ.get("PHOTOCRAFT_SESSION_TTL", "3600"))
+        self.ttl = int(os.environ.get("PHOTOCRAFT_SESSION_TTL", "900"))
 
     def purge(self):
         with self.lock:

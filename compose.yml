@@ -20,7 +20,7 @@ services:
       PHOTOCRAFT_MAX_UPLOAD_MB: "40"
       PHOTOCRAFT_MAX_PIXELS: "24000000"
       PHOTOCRAFT_MAX_SESSIONS: "4"
-      PHOTOCRAFT_SESSION_TTL: "3600"
+      PHOTOCRAFT_SESSION_TTL: "900"
       PHOTOCRAFT_HISTORY_MB: "128"
     restart: unless-stopped
     init: true

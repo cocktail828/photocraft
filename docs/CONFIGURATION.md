@@ -51,7 +51,7 @@ templates = []
 | `PHOTOCRAFT_MAX_UPLOAD_MB` | `40` | 单个上传文件大小上限，单位 MiB |
 | `PHOTOCRAFT_MAX_PIXELS` | `24000000` | 源图片及操作结果的像素总数上限 |
 | `PHOTOCRAFT_MAX_SESSIONS` | `4` | 同时保留的编辑会话数 |
-| `PHOTOCRAFT_SESSION_TTL` | `3600` | 会话闲置过期时间，秒 |
+| `PHOTOCRAFT_SESSION_TTL` | `900` | 会话闲置过期时间，秒 |
 | `PHOTOCRAFT_HISTORY_MB` | `128` | 每个会话撤销缓存预算，单位 MiB，至少保留一步撤销 |
 
 会话只在一个 Python 进程的内存中，部署时保持 **1 个 worker**。不同浏览器页面使用随机会话 ID；不要在没有会话路由的多个独立实例之间随机分配同一会话的请求。
