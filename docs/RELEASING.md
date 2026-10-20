@@ -40,7 +40,7 @@ Compose 默认将宿主机 `/usr/share/fonts` 只读挂载到容器的 `/usr/loc
 ## 本地验证
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements-dev.txt
 python -m pip install --no-deps -e .
 ruff check .
 python -m pytest -q
@@ -50,7 +50,7 @@ python scripts/smoke_web.py --spawn
 默认测试目标为 Web API 与通用图像处理代码，不安装或导入 Qt。浏览器检查需要开发依赖：
 
 ```bash
-npm ci
+npm ci --registry=https://registry.npmmirror.com
 npx playwright install --with-deps chromium firefox webkit
 # 先启动服务，再运行：
 npm run test:web
@@ -60,7 +60,7 @@ npm run test:web
 
 ## CI 和 tag 发布
 
-`ci.yml` 在 Linux / Windows 验证 Python API 与通用处理逻辑，并在 Linux 实际构建镜像、运行 HTTP 检查和 Chromium、Firefox 和 WebKit 交互检查。Windows 客户端可直接用浏览器访问服务；Windows 上运行容器需要 Docker 的 Linux 容器模式。
+`ci.yml` 仅在 Ubuntu 验证 Python API 与通用处理逻辑，并构建镜像、运行 HTTP 检查和 Chromium、Firefox、WebKit 交互检查，不包含 Windows 测试任务。Windows 客户端可直接用浏览器访问服务；Windows 上运行容器需要 Docker 的 Linux 容器模式。
 
 推送合法 tag 后，`release.yml` 先检查源码，再构建并验证镜像，最后推送到 GitHub Container Registry：
 
