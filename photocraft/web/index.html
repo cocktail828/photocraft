@@ -12,6 +12,7 @@
     <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
     <link rel="apple-touch-icon" href="/assets/icon-256.png" />
     <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/mobile.css" media="(max-width: 720px), (max-width: 960px) and (max-height: 500px) and (pointer: coarse)" />
     <script type="module" src="/static/app.js"></script>
   </head>
   <body>
@@ -89,11 +90,8 @@
             </div>
           </div>
           <div>
-            <button id="compare-button" class="quiet" disabled>
-              <span data-icon="compare"></span>按住查看原图</button
-            ><label class="checker-toggle" title="用棋盘格显示透明区域，仅影响预览，不会保存到图片"
-              ><input type="checkbox" id="checker" checked />透明网格</label
-            >
+            <button id="compare-button" class="quiet" aria-label="查看原图" title="查看原图" disabled>
+              <span data-icon="compare"></span><span class="compare-label">查看原图</span></button>
           </div>
         </div>
             <span class="toolbar-separator"></span>
@@ -293,7 +291,7 @@
             水印整页重复平铺，默认替换已有水印；底部勾选「多重水印」后可叠加，实时预览默认开启。图像压缩只调整编码格式和画质，保持当前像素尺寸。
           </li>
           <li>
-            按住「查看原图」对比，松开恢复编辑视图；显示大小下拉菜单中的「实际大小」按原像素显示，「适应窗口」完整显示图片。透明网格只帮助辨认透明区域，不会保存到图片。
+            按住「查看原图」对比，松开恢复编辑视图；显示大小下拉菜单中的「实际大小」按原像素显示，「适应窗口」完整显示图片。
           </li>
         </ul>
       </section>

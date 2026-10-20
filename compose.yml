@@ -7,7 +7,7 @@ services:
         VCS_REF: ${PHOTOCRAFT_COMMIT:-}
         VERSION_TAG: ${PHOTOCRAFT_TAG:-}
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${PHOTOCRAFT_BIND_IP:-127.0.0.1}:8000:8000"
     volumes:
       - photocraft-config:/data
       - type: bind

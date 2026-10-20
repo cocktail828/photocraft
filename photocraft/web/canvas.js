@@ -15,7 +15,6 @@ export class EditorCanvas {
     this.crop = null;
     this.ratio = null;
     this.fixed = false;
-    this.checker = true;
     this.pan = false;
     this.space = false;
     this.drag = null;
@@ -424,21 +423,6 @@ export class EditorCanvas {
     c.clip();
     c.fillStyle = document.body.classList.contains("dark") ? "#273244" : "#fff";
     c.fillRect(this.x, this.y, w, h);
-    if (this.checker) {
-      const dark = document.body.classList.contains("dark");
-      if (!this.pattern || this.patternDark !== dark) {
-        const tile = document.createElement("canvas");
-        tile.width = tile.height = 24;
-        const tc = tile.getContext("2d");
-        tc.fillStyle = dark ? "#354256" : "#e4e7ee";
-        tc.fillRect(0, 0, 12, 12);
-        tc.fillRect(12, 12, 12, 12);
-        this.pattern = c.createPattern(tile, "repeat");
-        this.patternDark = dark;
-      }
-      c.fillStyle = this.pattern;
-      c.fillRect(this.x, this.y, w, h);
-    }
     c.drawImage(this.localImage || this.image, this.x, this.y, w, h);
     c.restore();
     if (this.tool === "crop" && this.crop && !this.compareState) {

@@ -249,6 +249,19 @@ function selectBrushMode(mode) {
 }
 function positionStrokePopover(popover, button) {
   const rect = button.getBoundingClientRect();
+  if (matchMedia("(max-width: 720px), (max-width: 960px) and (max-height: 500px) and (pointer: coarse)").matches) {
+    const viewport = window.visualViewport;
+    const top = (viewport?.offsetTop || 0) + 12;
+    const bottom = (viewport?.offsetTop || 0) + (viewport?.height || innerHeight) - 12;
+    const anchor = Math.min(rect.top, bottom);
+    const below = anchor - top < Math.min(220, bottom - rect.bottom - 8);
+    popover.style.left = "12px";
+    popover.style.top = below ? `${Math.max(top, rect.bottom + 8)}px` : "auto";
+    popover.style.bottom = below ? "auto" : `${innerHeight - anchor + 8}px`;
+    popover.style.maxHeight = `${Math.max(80, below ? bottom - rect.bottom - 8 : anchor - top - 8)}px`;
+    return;
+  }
+  popover.style.removeProperty("max-height");
   const filters = popover.id === "filter-presets-popover";
   const width = Math.min(filters ? 640 : 264, window.innerWidth - 24);
   const left = filters ? rect.left : rect.left + rect.width / 2 - width / 2;
@@ -264,6 +277,8 @@ function repositionStrokePopovers() {
 }
 window.addEventListener("resize", repositionStrokePopovers);
 window.addEventListener("scroll", repositionStrokePopovers, true);
+window.visualViewport?.addEventListener("resize", repositionStrokePopovers);
+window.visualViewport?.addEventListener("scroll", repositionStrokePopovers);
 function check(name, label) {
   return `<label class="check"><input type="checkbox" data-field="${name}" ${settings[tool][name] ? "checked" : ""}>${label}</label>`;
 }
@@ -510,6 +525,17 @@ function wirePanel() {
     });
   });
   panelRoot().querySelectorAll(".stroke-parameter-popover").forEach(popover => {
+    const header = document.createElement("div");
+    header.className = "mobile-popover-header";
+    const title = document.createElement("strong");
+    title.textContent = popover.getAttribute("aria-label");
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "完成";
+    close.setAttribute("aria-label", `完成${title.textContent}设置`);
+    close.addEventListener("click", () => popover.hidePopover());
+    header.append(title, close);
+    popover.prepend(header);
     popover.addEventListener("toggle", () => {
       if (!popover.matches(":popover-open")) return;
       if (popover.getBoundingClientRect().top < 12) {
@@ -1254,10 +1280,6 @@ $("actual-button").addEventListener("click", () => { $("view-size-menu").hidePop
 $("pan-button").addEventListener("click", () => {
   canvas.pan = !canvas.pan;
   $("pan-button").classList.toggle("active", canvas.pan);
-});
-$("checker").addEventListener("change", (e) => {
-  canvas.checker = e.target.checked;
-  canvas.draw();
 });
 $("compare-button").addEventListener("pointerdown", (e) => {
   if (!session) return;

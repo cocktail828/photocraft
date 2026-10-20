@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, firefox, webkit } from "playwright";
+import { checkMobile } from "./mobile_smoke.mjs";
 const browserName = process.env.PHOTOCRAFT_BROWSER || "chromium";
 const engine = { chromium, firefox, webkit }[browserName];
 assert.ok(engine, "Unknown browser engine");
@@ -274,21 +275,7 @@ try {
   for (const path of ["/api/config", "/api/templates", "/api/preferences"]) {
     assert.equal((await context.request.get(base + path)).status(), 404);
   }
-  const mobile = await context.newPage();
-  await mobile.setViewportSize({ width: 390, height: 844 });
-  mobile.on("pageerror", (e) => errors.push(e.message));
-  await mobile.goto(base);
-  await mobile.waitForFunction(() =>
-    document.getElementById("status").textContent.includes("服务已连接"),
-  );
-  assert.ok(
-    await mobile.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-    "mobile layout must not overflow",
-  );
-  await mobile.screenshot({ path: join(folder, "mobile.png"), fullPage: true });
-  await mobile.close();
+  await checkMobile(browser, base, folder, errors);
   assert.deepEqual(errors, []);
   console.log(
     `PHOTOCRAFT_BROWSER_SMOKE_OK (${browserName}): crop, validation, drafts, colors, enhancement, brush, compression, download, compare, history, restricted configuration, mobile`,

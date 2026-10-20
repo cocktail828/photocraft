@@ -523,14 +523,6 @@ button.quiet {
   min-width: 38px;
   margin-left: 5px;
 }
-.checker-toggle {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  font-size: 11px;
-  margin-left: 7px;
-  white-space: nowrap;
-}
 .image-info {
   display: flex;
   align-items: center;
@@ -954,15 +946,6 @@ dialog h2 {
 .properties {
   min-width: 0;
 }
-@media (max-width: 720px) {
-  .welcome {
-    justify-content: flex-start;
-    padding: 28px 20px;
-  }
-  .dropzone {
-    flex-shrink: 0;
-  }
-}
 @media (min-width: 1600px) {
   .app-body {
     grid-template-columns: 90px minmax(300px, 1fr) 340px;
@@ -1038,152 +1021,10 @@ dialog h2 {
   .canvas-controls {
     padding: 0 8px;
   }
-  .checker-toggle {
-    display: none;
-  }
   .sidebar-bottom {
     font-size: 8px;
   }
 }
-@media (max-width: 720px) {
-  .app-header {
-    height: 66px;
-    gap: 16px;
-    padding: 0 13px;
-  }
-  .brand {
-    font-size: 18px;
-    gap: 8px;
-  }
-  .brand img {
-    width: 31px;
-    height: 31px;
-  }
-  .brand small {
-    font-size: 8px;
-  }
-  .header-actions {
-    gap: 6px;
-  }
-  .help-button {
-    width: 34px;
-    height: 34px;
-    padding: 7px;
-  }
-  .help-label {
-    display: none;
-  }
-  .save-button {
-    font-size: 0;
-    padding: 9px;
-  }
-  .save-button svg {
-    width: 18px;
-  }
-  .app-body {
-    height: auto;
-    min-height: calc(100vh - 126px);
-    min-height: calc(100dvh - 126px);
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(520px, 70vh) auto;
-    grid-template-rows: auto minmax(520px, 70dvh) auto;
-  }
-  .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 5px 8px;
-    display: block;
-    overflow: auto;
-  }
-  .sidebar nav {
-    display: flex;
-    gap: 2px;
-    min-width: 630px;
-    justify-content: space-between;
-  }
-  .tool-button {
-    min-width: 65px;
-    min-height: 54px;
-    padding: 8px 5px;
-    gap: 4px;
-    font-size: 9px;
-  }
-  .tool-button svg {
-    width: 20px;
-    height: 20px;
-  }
-  .sidebar-bottom {
-    display: none;
-  }
-  .properties {
-    border-left: 0;
-    border-top: 1px solid var(--line);
-    padding: 22px;
-  }
-  .workspace-toolbar {
-    height: 53px;
-  }
-  .workspace-actions .icon-button {
-    width: 29px;
-  }
-  .toolbar-separator {
-    margin: 0 3px;
-  }
-  .welcome h1 {
-    font-size: 25px;
-  }
-  .welcome-subtitle {
-    max-width: 290px;
-    font-size: 11px;
-  }
-  .welcome-features {
-    gap: 20px;
-  }
-  .welcome-features > span {
-    font-size: 9px;
-    gap: 4px;
-  }
-  .dropzone {
-    min-height: 185px;
-  }
-  .canvas-controls .quiet {
-    padding: 6px;
-    font-size: 10px;
-  }
-  .image-info {
-    gap: 10px;
-  }
-  .info-content {
-    font-size: 9px;
-  }
-  .statusbar {
-    position: sticky;
-    bottom: 0;
-    z-index: 6;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-    height: auto;
-    min-height: 60px;
-    padding: 7px 12px;
-  }
-  .statusbar > span:first-child {
-    justify-content: center;
-  }
-  .statusbar #status {
-    white-space: normal;
-    text-align: center;
-  }
-  .properties h2 {
-    margin-top: 8px;
-  }
-  .properties .panel-description {
-    padding-bottom: 12px;
-  }
-  .properties .range-field {
-    margin: 24px 0;
-  }
-}
-
 .color-trigger {
   gap: 9px;
   font-size: 12px;
@@ -1357,19 +1198,6 @@ dialog h2 {
   background: var(--accent-soft);
   border-color: var(--accent);
 }
-@media (max-width: 720px) {
-  .adjust-section {
-    padding-top: 20px;
-  }
-  .adjust-panel .range-field {
-    margin: 0 0 28px;
-  }
-  .adjust-toggle,
-  .geometry-tabs button {
-    min-height: 42px;
-  }
-}
-
 #status {
   min-width: 0;
   overflow: hidden;
@@ -1449,12 +1277,6 @@ dialog h2 {
 .filter-strength .range-field {
   margin: 18px 0;
 }
-@media (max-width: 720px) {
-  .filter-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
 /* Keep geometry controls beside the photograph, with a centered degree ruler. */
 .geometry-controls {
   flex-shrink: 0;
@@ -1674,36 +1496,6 @@ dialog h2 {
     gap: 8px;
   }
 }
-@media (max-width: 720px) {
-  .app-body.stroke-workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(570px, 75dvh);
-  }
-  .stroke-controls {
-    padding: 8px 14px;
-  }
-  .stroke-fields,
-  .is-brush .stroke-fields {
-    justify-content: flex-start;
-    gap: 6px;
-  }
-  .stroke-parameter-trigger,
-  .stroke-color-trigger {
-    padding: 5px 7px;
-    gap: 6px;
-    font-size: 10px;
-  }
-  .stroke-parameter-value {
-    font-size: 10px;
-  }
-  .stroke-fields .check {
-    white-space: normal;
-    line-height: 1.5;
-    padding: 5px 7px;
-    font-size: 10px;
-  }
-}
-
 .brush-mode-trigger[aria-pressed="true"] {
   color: var(--accent);
   border-color: var(--accent);
@@ -1794,13 +1586,6 @@ dialog h2 {
 @keyframes remove-hold {
   to { transform: scaleX(1); }
 }
-@media (max-width: 720px) {
-  .remove-marks {
-    padding: 5px 7px;
-    font-size: 10px;
-  }
-}
-
 .crop-controls {
   flex-shrink: 0;
   padding: 7px 22px;
@@ -1842,13 +1627,6 @@ dialog h2 {
 .crop-parameter-popover .resize-label {
   font-size: 12px;
 }
-@media (max-width: 720px) {
-  .crop-controls { padding: 7px 14px; }
-  .crop-controls .stroke-fields { gap: 6px; }
-  .crop-selection { max-width: 116px; font-size: 10px; }
-  .crop-resume { font-size: 10px; padding: 5px 7px; }
-}
-
 .effect-controls {
   flex-shrink: 0;
   padding: 8px 22px;
@@ -1917,19 +1695,12 @@ dialog h2 {
 .filter-bottom-row > .stroke-parameter {
   flex-shrink: 0;
 }
-@media (max-width: 720px) {
-  .effect-controls { padding: 7px 14px; }
-  .filter-bottom-row { gap: 9px; }
-  .effect-controls .filter-card { flex-basis: 60px; }
-  .effect-reset { padding: 5px 7px; font-size: 10px; }
-}
-
 /* Two compact crop rows: ruler, then every action on one scrollable row. */
-.geometry-bottom-row { display: flex; gap: 10px; overflow-x: auto; }
+.geometry-bottom-row { display: flex; justify-content: safe center; gap: 10px; overflow-x: auto; }
 .geometry-action-group { flex: 0 0 auto; white-space: nowrap; }
-.geometry-bottom-row .crop-controls { flex: 1 0 auto; padding: 0; border: 0; }
+.geometry-bottom-row .crop-controls { flex: 0 0 auto; padding: 0; border: 0; }
 .crop-controls .stroke-fields { flex-wrap: nowrap; }
-.geometry-action-group:last-child { margin-left: auto; }
+.geometry-action-group:last-child { margin-left: 0; }
 .save-chevron { font-size: 12px; }
 .save-menu { position: fixed; inset: auto; margin: 0; width: 220px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 8px 28px #0003; }
 .save-menu button { width: 100%; justify-content: space-between; padding: 11px 12px; background: transparent; border: 0; font-size: 12px; }
@@ -1960,24 +1731,13 @@ dialog h2 {
 .view-controls { color: var(--muted); }
 .view-controls .quiet { font-size: 11px; white-space: nowrap; }
 .view-controls #zoom { min-width: 38px; font-size: 10px; margin-left: 3px; }
-.view-controls .checker-toggle { display: flex; }
 .workspace-actions #apply-button { position: sticky; right: 0; }
 @media (max-width: 1100px) {
   .workspace-toolbar { padding: 0 12px; }
   .workspace-toolbar .filename { flex-basis: 110px; }
   .view-controls { gap: 3px; }
 }
-@media (max-width: 720px) {
-  .workspace-toolbar .filename { display: none; }
-  .workspace-actions { width: 100%; gap: 3px; }
-  .view-controls .quiet { padding: 6px; font-size: 10px; }
-  .view-controls .checker-toggle { font-size: 10px; }
-}
-
 /* Group magnification with the centered image information. */
 .statusbar .image-info { gap: 0; }
 
-@media (max-width: 720px) {
-  .statusbar { grid-template-columns: minmax(0, 1fr); }
-  .statusbar .image-info { justify-content: center; gap: 0; }
-}
+.mobile-popover-header { display: none; }
