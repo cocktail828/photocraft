@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QLibraryInfo, QLocale, QTimer, QTranslator
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from . import __version__
@@ -21,8 +20,7 @@ def main():
     app.setDesktopFileName("photocraft")
     app.setWindowIcon(logo())
     app.setStyle("Fusion")
-    font = QFont()
-    font.setFamilies(["Noto Sans CJK SC", "Microsoft YaHei UI", "Segoe UI", "sans-serif"])
+    font = app.font()
     font.setPointSize(10)
     app.setFont(font)
     translator = QTranslator(app)

@@ -20,12 +20,8 @@ class Crop(Input):
 
 class Rotate(Input):
     angle: float = Field(default=0, ge=-180, le=180)
-    flip: Literal["horizontal", "vertical"] | None = None
+    flip: Literal["horizontal", "vertical", "both"] | None = None
     expand: bool = True
-
-
-class Background(Input):
-    color: Color = "#ffffff"
 
 
 class Stroke(Input):
@@ -83,7 +79,6 @@ class Operation(Input):
     tool: Literal[
         "crop",
         "rotate",
-        "background",
         "brush",
         "mosaic",
         "blur",
@@ -105,12 +100,14 @@ class Revision(Input):
     revision: int = Field(ge=0)
 
 
+class RemoveStrokes(Revision):
+    all: bool = False
+
 
 PARAMETERS = {
     "clear_watermarks": Input,
     "crop": Crop,
     "rotate": Rotate,
-    "background": Background,
     "brush": Stroke,
     "mosaic": Stroke,
     "blur": Stroke,

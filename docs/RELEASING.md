@@ -1,8 +1,10 @@
 # Web 服务镜像与部署
 
-现在的主要交付物是带网页资源的 Python 后端镜像，前后端由同一服务提供。运行镜像不需要 Qt、图形桌面、Node.js 或宿主机 Python。镜像基于 Python 3.12 Debian slim，包含中文水印字体，并以 UID/GID 10001 运行。
+现在的主要交付物是带网页资源的 Python 后端镜像，前后端由同一服务提供。运行镜像不需要 Qt、图形桌面、Node.js 或宿主机 Python。镜像基于 Python 3.12 Debian slim，使用运行环境中的可用字体，并以 UID/GID 10001 运行。
 
 ## 构建
+
+默认使用华为云镜像仓库的 Python 基础镜像，Python 软件包使用清华 PyPI 镜像。可通过构建参数 `BASE_IMAGE` 和 `PIP_INDEX_URL` 覆盖；镜像不安装指定字体包，也不需要 apt 下载步骤。
 
 ```bash
 python scripts/build_image.py --tag photocraft:local
@@ -32,6 +34,8 @@ docker run -d --name photocraft \
 服务和接口使用同源根路径 `/`。健康检查为 `GET /api/health`。图像处理与只读预设接口位于 `/api/`；静态资源不从公网 CDN 加载。
 
 持久卷只保存配置。图像、编码结果和撤销记录属于内存会话，服务重启会释放。绑定宿主目录代替命名卷时，需要确保 UID 10001 有写入权限。
+
+Compose 默认将宿主机 `/usr/share/fonts` 只读挂载到容器的 `/usr/local/share/fonts`，供水印使用。可通过 `PHOTOCRAFT_FONTS_DIR` 指定其他系统或用户字体目录（如 macOS 的 `/System/Library/Fonts`、Windows 的 `C:/Windows/Fonts`）；该目录必须存在且允许容器用户读取。新增字体后重启服务刷新字体列表，不需要重新构建镜像。
 
 ## 本地验证
 

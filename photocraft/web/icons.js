@@ -8,6 +8,7 @@ const paths = {
   rotate: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
   brush:
     '<path d="m14 4 6 6-9 9-6-6zM5 13c-5 1 1 6-3 8 8 1 8-4 9-4M14 4l2-2 6 6-2 2"/>',
+  erase: '<path d="m15 3 6 6-11 11H5l-3-3L15 3ZM8 10l7 7M10 20h12"/>',
   mosaic:
     '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   blur: '<path d="M12 2C10 6 5 10 5 15a7 7 0 0 0 14 0c0-5-5-9-7-13Z"/><path d="M8 15a4 4 0 0 0 4 4"/>',
@@ -26,6 +27,10 @@ const paths = {
     '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 2v20M6 15l3-4 3 4M12 15l4-5 2 3"/>',
   fit: '<path d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6"/>',
   hand: '<path d="M8 12V5a2 2 0 0 1 4 0v6-8a2 2 0 0 1 4 0v9-6a2 2 0 0 1 4 0v10c0 7-10 7-12 4l-5-7c-2-4 2-5 5-1z"/>',
+  "rotate-left": '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6"/>',
+  "rotate-right": '<path d="M21 10a9 9 0 1 0-2 8m2-14v6h-6"/>',
+  "flip-horizontal": '<path d="M12 3v18M3 17l5-10v10ZM21 17 16 7v10Z"/>',
+  "flip-vertical": '<path d="M3 12h18M7 3l10 5H7ZM7 21l10-5H7Z"/>',
   check: '<path d="m4 12 5 5L20 6"/>',
   image:
     '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 18 6-6 4 4 4-6 4 7"/>',
@@ -34,6 +39,7 @@ const paths = {
   settings:
     '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 1 1 5 2c-2 1-2 2-2 3m0 3h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10h.01"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   chevron: '<path d="m8 5 7 7-7 7"/>',
   minus: '<path d="M5 12h14"/>',

@@ -60,7 +60,7 @@ def test_web_assets_and_health_need_no_qt(client):
     assert client.get("/api/health").json()["status"] == "ok"
     assert "PySide6" not in sys.modules
     data = client.get("/api/bootstrap").json()
-    assert len(data["templates"]) == 3 and "version" in data
+    assert len(data["templates"]) == 4 and "version" in data
 
 
 def test_crop_preview_apply_download_and_history_share_exact_results(client):
@@ -129,16 +129,13 @@ def test_compression_uses_exact_cached_bytes_and_does_not_resize(client, monkeyp
         assert image.size == (400, 560) and image.format == fmt
 
 
-def test_background_opaque_noop_and_transparent_fill(client):
-    opaque, _ = photo(client, transparent=False)
-    entry = preview(client, opaque, "background", {"color": "#ff0000"})
-    assert not entry["can_apply"] and "不含透明区域" in entry["warning"]
-    assert apply(client, opaque, entry)["revision"] == 0
+def test_removed_background_tool_is_rejected(client):
     session, _ = photo(client)
-    entry = preview(client, session, "background", {"color": "#ff0000"})
-    session = apply(client, session, entry)
-    with Image.open(BytesIO(client.get(f"/api/sessions/{session['id']}/download").content)) as image:
-        assert image.convert("RGBA").getchannel("A").getextrema() == (255, 255)
+    response = client.post(
+        f"/api/sessions/{session['id']}/preview",
+        json={"revision": 0, "tool": "background", "params": {"color": "#ff0000"}},
+    )
+    assert response.status_code == 422
 
 
 def test_enhancement_is_absolute_and_gesture_is_one_undo_step(client):
@@ -153,6 +150,23 @@ def test_enhancement_is_absolute_and_gesture_is_one_undo_step(client):
         f"/api/sessions/{session['id']}/undo", json={"revision": session["revision"]}
     ).json()
     assert client.get(f"/api/sessions/{session['id']}/download").content == original
+
+
+@pytest.mark.parametrize("flip", ["horizontal", "vertical", "both"])
+def test_rotate_preserves_full_frame_and_combines_flips(client, flip):
+    from PIL import ImageOps
+
+    session, _ = photo(client)
+    editor = client.app.state.editors.get(session["id"])
+    source = editor.current.state.base.copy()
+    expected = source.rotate(23, expand=True, resample=Image.Resampling.BICUBIC)
+    if flip in ("horizontal", "both"):
+        expected = ImageOps.mirror(expected)
+    if flip in ("vertical", "both"):
+        expected = ImageOps.flip(expected)
+    updated = apply(client, session, preview(client, session, "rotate", {"angle": 23, "flip": flip}))
+    assert (updated["current"]["width"], updated["current"]["height"]) == expected.size
+    assert editor.current.state.base.tobytes() == expected.tobytes()
 
 
 def test_stale_preview_is_rejected_and_other_sessions_stay_unchanged(client):
@@ -269,8 +283,67 @@ def test_invalid_persistent_config_uses_defaults_and_logs_for_administrator(tmp_
     path.write_text("broken = [", encoding="utf-8")
     with TestClient(create_app(folder)) as client:
         bootstrap = client.get("/api/bootstrap").json()
-        assert len(bootstrap["templates"]) == 3
+        assert len(bootstrap["templates"]) == 4
         assert "config_errors" not in bootstrap
         assert client.get("/api/config").status_code == 404
         assert "Service configuration:" in caplog.text
     assert path.read_text(encoding="utf-8") == "broken = ["
+
+
+def test_remove_marks_click_hold_redo_and_other_edit_boundary(client):
+    session, _ = photo(client)
+    session = apply(client, session, preview(client, session, "crop", {"box": [0, 0, 300, 420]}))
+    editor = client.app.state.editors.get(session["id"])
+    cropped = editor.current
+    snapshots = []
+    for color in ("#ff0000", "#00ff00", "#0000ff"):
+        session = apply(client, session, preview(client, session, "brush", {"points": [[20, 20]], "color": color}))
+        snapshots.append(editor.current)
+    route = f"/api/sessions/{session['id']}"
+    assert session["can_remove_marks"]
+    response = client.post(route + "/remove-strokes", json={"revision": session["revision"], "all": False})
+    assert response.status_code == 200
+    session = response.json()
+    assert editor.current is snapshots[1]
+    response = client.post(route + "/remove-strokes", json={"revision": session["revision"], "all": True})
+    assert response.status_code == 200
+    session = response.json()
+    assert editor.current is cropped and not session["can_remove_marks"]
+    assert session["current"]["width"] == 300
+    # Every retained stroke can still be redone after removing the group.
+    session = client.post(route + "/redo", json={"revision": session["revision"]}).json()
+    assert editor.current is snapshots[0]
+    session = client.post(route + "/redo", json={"revision": session["revision"]}).json()
+    assert editor.current is snapshots[1]
+    session = apply(client, session, preview(client, session, "enhance", {"brightness": 1.2}))
+    assert not session["can_remove_marks"]
+    revision = session["revision"]
+    session = client.post(route + "/remove-strokes", json={"revision": revision, "all": True}).json()
+    assert session["revision"] == revision and session["enhancement"]["brightness"] == 1.2
+    assert client.post(route + "/remove-strokes", json={"revision": revision - 1, "all": True}).status_code == 409
+
+
+def test_remove_all_marks_retains_origin_when_history_is_trimmed(client, monkeypatch):
+    monkeypatch.setenv("PHOTOCRAFT_HISTORY_MB", "0")
+    session, original = photo(client)
+    editor = client.app.state.editors.get(session["id"])
+    for tool in ("brush", "mosaic", "blur", "brush"):
+        session = apply(client, session, preview(client, session, tool, {"points": [[20, 20], [40, 40]]}))
+    assert len(editor.history) == 1
+    route = f"/api/sessions/{session['id']}"
+    response = client.post(route + "/remove-strokes", json={"revision": session["revision"], "all": True})
+    assert response.status_code == 200
+    assert editor.current is editor.source
+    assert client.get(route + "/download").content == original
+
+
+def test_clipboard_full_resolution_excludes_draft(client):
+    session, original = photo(client)
+    preview(client, session, "rotate", {"angle": 90, "expand": True})
+    result = client.get(f"/api/sessions/{session['id']}/clipboard")
+    assert result.status_code == 200
+    assert result.headers["content-type"] == "image/png"
+    assert int(result.headers["X-PhotoCraft-Revision"]) == session["revision"]
+    with Image.open(BytesIO(result.content)) as copied, Image.open(BytesIO(original)) as source:
+        assert copied.size == source.size
+        assert copied.convert("RGBA").tobytes() == source.convert("RGBA").tobytes()

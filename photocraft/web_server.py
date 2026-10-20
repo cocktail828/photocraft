@@ -22,7 +22,7 @@ from . import __version__
 from .config import Config
 from .web_editor import EXTENSIONS, MIMES, Conflict, Editors, demo_bytes
 from .web_fonts import fonts
-from .web_models import Apply, Operation, Revision
+from .web_models import Apply, Operation, RemoveStrokes, Revision
 
 ROOT = Path(__file__).resolve().parent
 MAX_UPLOAD = int(os.environ.get("PHOTOCRAFT_MAX_UPLOAD_MB", "40")) * 1024 * 1024
@@ -156,6 +156,10 @@ def create_app(config_dir=None):
     def undo(sid: str, body: Revision):
         return editor(sid).travel(body.revision)
 
+    @app.post("/api/sessions/{sid}/remove-strokes")
+    def remove_strokes(sid: str, body: RemoveStrokes):
+        return editor(sid).remove_strokes(body.revision, all_strokes=body.all)
+
     @app.post("/api/sessions/{sid}/redo")
     def redo(sid: str, body: Revision):
         return editor(sid).travel(body.revision, redo=True)
@@ -191,6 +195,15 @@ def create_app(config_dir=None):
                 "Content-Disposition": f"attachment; filename=photocraft.{EXTENSIONS[entry.encoded.format]}; filename*=UTF-8''{quote(name)}",
                 "X-PhotoCraft-Revision": str(revision),
             },
+        )
+
+    @app.get("/api/sessions/{sid}/clipboard")
+    def clipboard(sid: str):
+        entry, revision = editor(sid).applied
+        return Response(
+            entry.clipboard(),
+            media_type="image/png",
+            headers={"X-PhotoCraft-Revision": str(revision)},
         )
 
     app.mount("/assets", StaticFiles(directory=ROOT / "assets"), name="assets")

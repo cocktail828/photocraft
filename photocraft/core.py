@@ -99,7 +99,11 @@ class Watermark:
             layer = self.text_bitmap.copy()
         else:
             try:
-                font = ImageFont.truetype(self.font or "DejaVuSans.ttf", self.size)
+                font = (
+                    ImageFont.truetype(self.font, self.size)
+                    if self.font
+                    else ImageFont.load_default(size=self.size)
+                )
             except OSError:
                 font = ImageFont.load_default(size=self.size)
             box = font.getbbox(self.text or " ")
@@ -235,26 +239,50 @@ def paint_stroke(
     """Commit a source-pixel stroke; effect pixels, not the displayed mask, are exported."""
     if not points:
         return image.copy()
-    mask = Image.new("L", image.size)
-    draw = ImageDraw.Draw(mask)
+    # Allocate masks and run filters only near the stroke. The final image is
+    # still independent of the source so history and undo retain their pixels.
     xy = [(round(x), round(y)) for x, y in points]
-    draw.line(xy, fill=round(opacity * 255), width=size, joint="curve")
     radius = size / 2
-    for x, y in xy:
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=round(opacity * 255))
+    left = max(0, math.floor(min(x for x, _ in xy) - radius))
+    top = max(0, math.floor(min(y for _, y in xy) - radius))
+    right = min(image.width, math.ceil(max(x for x, _ in xy) + radius) + 1)
+    bottom = min(image.height, math.ceil(max(y for _, y in xy) + radius) + 1)
+    result = image.copy()
+    if right <= left or bottom <= top or opacity == 0:
+        return result
+    box = (left, top, right, bottom)
+    region = image.crop(box)
+    mask = Image.new("L", region.size)
+    draw = ImageDraw.Draw(mask)
+    local = [(x - left, y - top) for x, y in xy]
+    alpha = round(opacity * 255)
+    draw.line(local, fill=alpha, width=size, joint="curve")
+    for x, y in local:
+        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=alpha)
     if mode == "mosaic":
-        effect = image.resize(
-            (max(1, math.ceil(image.width / block)), max(1, math.ceil(image.height / block))),
-            Image.Resampling.BOX,
-        )
-        effect = effect.resize(image.size, Image.Resampling.NEAREST)
+        # Align to the image origin so separate strokes share the same grid.
+        x0, y0 = left // block * block, top // block * block
+        x1 = min(image.width, math.ceil(right / block) * block)
+        y1 = min(image.height, math.ceil(bottom / block) * block)
+        tile = image.crop((x0, y0, x1, y1))
+        effect = tile.reduce(block)
+        effect = effect.resize((effect.width * block, effect.height * block), Image.Resampling.NEAREST)
+        effect = effect.crop((left - x0, top - y0, right - x0, bottom - y0))
     elif mode == "blur":
-        effect = image.filter(ImageFilter.GaussianBlur(max(1, block / 2)))
+        blur_radius = max(1, block / 2)
+        # Pillow's Gaussian approximation has bounded support; this halo avoids
+        # seams where the processed region meets untouched source pixels.
+        halo = math.ceil(blur_radius * 4) + 2
+        x0, y0 = max(0, left - halo), max(0, top - halo)
+        x1, y1 = min(image.width, right + halo), min(image.height, bottom + halo)
+        effect = image.crop((x0, y0, x1, y1)).filter(ImageFilter.GaussianBlur(blur_radius))
+        effect = effect.crop((left - x0, top - y0, right - x0, bottom - y0))
     elif mode == "erase":
-        effect = Image.new("RGBA", image.size)
+        effect = Image.new("RGBA", region.size)
     else:
-        effect = Image.new("RGBA", image.size, color)
-    return Image.composite(effect, image, mask)
+        effect = Image.new("RGBA", region.size, color)
+    result.paste(Image.composite(effect, region, mask), (left, top))
+    return result
 
 
 def crop_pixels(base, watermarks, box, *, output_size=None, allow_resize=False):
@@ -370,6 +398,12 @@ class Document:
 
 def transform_pixels(base, watermarks, angle=0, flip=None, expand=True):
     """Transform immutable pixels and copied editable watermarks without history copies."""
+    if angle and flip:
+        base, watermarks = transform_pixels(base, watermarks, angle, None, expand)
+        return transform_pixels(base, watermarks, 0, flip, expand)
+    if flip == "both":
+        base, watermarks = transform_pixels(base, watermarks, 0, "horizontal", expand)
+        return transform_pixels(base, watermarks, 0, "vertical", expand)
     watermarks = [copy(mark) for mark in watermarks]
     old_w, old_h = base.size
     if flip:

@@ -44,7 +44,7 @@ def stylesheet(dark=False):
     muted = "#9aaac1" if dark else "#7b879b"
     line = "#303c52" if dark else "#e7ebf2"
     field = "#263248" if dark else "#f7f9fc"
-    return f"""QWidget {{ font-family: 'Noto Sans CJK SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif;
+    return f"""QWidget {{
  font-size: 12px; color: {fg}; }}
 QMainWindow, #root {{ background: {bg}; }}
 QMenuBar {{ background: {panel}; border-bottom: 1px solid {line}; padding: 3px 14px; }}
@@ -56,7 +56,7 @@ QMenu::item:selected {{ background: #4376ef; color: white; }}
 QMenu::item:disabled {{ color: {muted}; }}
 QMenu::separator {{ height: 1px; background: {line}; margin: 5px 8px; }}
 QPlainTextEdit#configEditor {{ background: {field}; border: 1px solid {line}; border-radius: 6px;
- padding: 10px; font-family: 'DejaVu Sans Mono', 'Consolas', monospace; font-size: 12px; }}
+ padding: 10px; font-family: monospace; font-size: 12px; }}
 #header, #sidebar, #properties, #workspaceBar, #canvasControls {{ background: {panel}; }}
 #header {{ border-bottom: 1px solid {line}; }}
 #sidebar {{ border-right: 1px solid {line}; }}

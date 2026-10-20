@@ -281,9 +281,11 @@ def test_palette_roundtrip_reload_and_reset_preserve_deleted_templates(tmp_path)
     assert restored.watermark_color == DEFAULT_WATERMARK_COLOR
 
 
-def test_default_templates_match_user_reduced_list():
+def test_default_templates_include_exam_sizes():
     assert [p["name"] for p in PRESETS] == [
         "1 寸证件照 · 295 × 413 px",
         "2 寸证件照 · 413 × 579 px",
-        "小 1 寸 · 260 × 378 px",
+        "教师资格考试（参考）· 150 × 200 px",
+        "国家公务员考试（参考）· 295 × 413 px",
     ]
+    assert [(p["width"], p["height"]) for p in PRESETS[-2:]] == [(150, 200), (295, 413)]

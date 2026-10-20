@@ -10,6 +10,12 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - photocraft-config:/data
+      - type: bind
+        source: ${PHOTOCRAFT_FONTS_DIR:-/usr/share/fonts}
+        target: /usr/local/share/fonts
+        read_only: true
+        bind:
+          create_host_path: false
     environment:
       PHOTOCRAFT_MAX_UPLOAD_MB: "40"
       PHOTOCRAFT_MAX_PIXELS: "24000000"

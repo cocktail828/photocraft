@@ -23,7 +23,6 @@ const page = await context.newPage();
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const shot = async (name) => {
-  await page.locator("#toast").waitFor({ state: "hidden" });
   return page.screenshot({ path: join(folder, name + ".png") });
 };
 const waitText = async (id, text) =>
@@ -55,6 +54,35 @@ try {
       .count(),
     0,
   );
+  assert.equal(await page.locator('[data-tool="background"]').count(), 0);
+  await page.evaluate(async () => {
+    const { EditorCanvas } = await import("/static/canvas.js");
+    const source = document.createElement("canvas");
+    source.width = source.height = 100;
+    source.getContext("2d").fillStyle = "#ffffff";
+    source.getContext("2d").fillRect(0, 0, 100, 100);
+    const image = new Image();
+    image.src = source.toDataURL();
+    await image.decode();
+    for (const erase of [false, true]) {
+      const editor = Object.create(EditorCanvas.prototype);
+      Object.assign(editor, { image, width: 100, height: 100, tool: "brush", drag: {
+        type: "stroke", points: [[20, 20]], brush: { size: 10, opacity: 0.5, color: "#0000ff", erase },
+      }});
+      editor.paintLocal();
+      const surface = editor.localImage;
+      const pixel = () => Array.from(surface.getContext("2d").getImageData(20, 20, 1, 1).data);
+      const first = pixel();
+      editor.drag.points.push([50, 20], [20, 20]);
+      editor.paintLocal();
+      if (surface !== editor.localImage || first.join() !== pixel().join())
+        throw new Error("Incremental strokes must reuse their surface and preserve opacity at overlaps");
+      const untouched = surface.getContext("2d").getImageData(90, 90, 1, 1).data;
+      if (untouched[0] !== 255 || untouched[3] !== 255)
+        throw new Error("Stroke redraw must preserve untouched pixels");
+    }
+  });
+
   await shot("welcome");
   const demoResponse = page.waitForResponse(
     (r) => r.url().endsWith("/api/demo") && r.status() === 201,
@@ -63,13 +91,23 @@ try {
   sid = (await (await demoResponse).json()).id;
   const route = base + "/api/sessions/" + sid;
   const state = async () => context.request.get(route).then((r) => r.json());
+  const waitCurrent = (key, value) => page.waitForFunction(
+    async ({ route, key, value }) => (await (await fetch(route)).json()).current[key] === value,
+    { route, key, value },
+  );
+  const waitApply = (disabled) => page.waitForFunction(
+    (disabled) => document.getElementById("apply-button").disabled === disabled &&
+      !document.body.classList.contains("busy"),
+    disabled,
+  );
   const payload = async () =>
     context.request.get(route + "/download").then((r) => r.body());
   const original = await payload();
   await waitText("preview-info", "295 × 413");
   await shot("crop");
   await page.locator("#apply-button").click();
-  await waitText("current-info", "295 × 413");
+  await waitCurrent("width", 295);
+  await page.locator('[popovertarget="crop-preset-popover"]').click();
   await page.locator("#crop-mode").selectOption("t:1");
   await waitText("preview-info", "允许缩放");
   await page.locator("#apply-button").click();
@@ -78,37 +116,30 @@ try {
   assert.equal((await state()).current.width, 295);
   await page.locator("#error-dialog .primary").click();
   await page.locator("#undo-button").click();
-  await waitText("current-info", "720 × 900");
+  await waitCurrent("width", 720);
   assert.deepEqual(await payload(), original);
   await select("crop");
+  await page.locator('[popovertarget="crop-preset-popover"]').click();
   await page.locator("#crop-mode").selectOption("custom");
   assert.equal(await page.locator('[data-field="ratio_w"]').inputValue(), "16");
   assert.equal(await page.locator('[data-field="ratio_h"]').inputValue(), "9");
-  await waitText("preview-badge", "未应用");
+  await waitApply(false);
   await shot("crop-ratio");
   await select("watermark");
+  await page.locator('[popovertarget="watermark-text-popover"]').click();
   await page.locator("#mark-text").fill("仅用于资料审核");
-  await page.locator('[data-pick-color="color"]').click();
-  await page.locator("#color-dialog").waitFor({ state: "visible" });
-  assert.equal(await page.locator("#color-presets .swatch").count(), 16);
-  await page.locator('#color-presets [data-value="#ef4444"]').click();
-  assert.equal(await page.locator("#color-hex").inputValue(), "#ef4444");
-  assert.equal(await page.locator('#color-presets [aria-pressed="true"]').getAttribute("data-value"), "#ef4444");
+  await page.keyboard.press("Escape");
+  await page.locator('[popovertarget="watermark-style-popover"]').click();
+  assert.equal(await page.locator(".watermark-colors .swatch").count(), 16);
+  await page.locator('[data-watermark-swatch="#ef4444"]').click();
+  assert.equal(await page.locator("#watermark-color").inputValue(), "#ef4444");
+  assert.equal(await page.locator('.watermark-colors .brush-color-hex').inputValue(), "#ef4444");
+  assert.equal(await page.locator('[data-watermark-swatch][aria-pressed="true"]').getAttribute("data-watermark-swatch"), "#ef4444");
   await shot("colors");
-  await page.locator("#color-hex").fill("#64748b");
-  await page.locator("#color-g").evaluate((el) => {
-    el.value = "116";
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  assert.equal(await page.locator("#color-hex").inputValue(), "#64748b");
-  await page.locator('#color-form button[type="submit"]').click();
-  await page.locator("#color-dialog").waitFor({ state: "hidden" });
-  assert.ok(
-    (await page.locator('[data-pick-color="color"]').textContent()).includes(
-      "#64748b",
-    ),
-  );
-  await waitText("preview-badge", "未应用");
+  await page.locator('.watermark-colors .brush-color-hex').fill("#64748b");
+  assert.equal(await page.locator("#watermark-color").inputValue(), "#64748b");
+  await page.keyboard.press("Escape");
+  await waitApply(false);
   await page.waitForFunction(() => !document.body.classList.contains("busy"));
   await page.waitForTimeout(350);
   await shot("watermark");
@@ -118,9 +149,12 @@ try {
     "watermark draft must never enter saved pixels",
   );
   await page.locator("#apply-button").click();
-  await waitText("preview-badge", "与当前一致");
+  await waitApply(true);
   assert.notDeepEqual(await payload(), original);
   await select("enhance");
+  assert.equal(await page.locator("#properties").isVisible(), false);
+  assert.equal(await page.locator("#effect-controls").isVisible(), true);
+  await page.locator('[popovertarget="adjust-light-popover"]').click();
   await page.locator('[data-field="brightness"]').evaluate((el) => {
     el.dispatchEvent(new PointerEvent("pointerdown"));
     el.value = "1.25";
@@ -137,6 +171,24 @@ try {
   );
   await shot("enhance");
   await select("brush");
+  assert.equal(await page.locator("#properties").isVisible(), false);
+  assert.equal(await page.locator("#stroke-controls").isVisible(), true);
+  const strokeArea = await page.locator("#stroke-controls").boundingBox();
+  const photoArea = await page.locator("#editor-canvas").boundingBox();
+  assert.ok(strokeArea.y >= photoArea.y + photoArea.height - 1, "Brush controls must sit below the photo");
+  assert.equal(await page.locator('#stroke-controls input[type="range"]:visible').count(), 0);
+  await page.locator('[popovertarget="stroke-paint-popover"]').click();
+  await page.locator('#stroke-paint-popover:popover-open').waitFor();
+  await page.locator('#stroke-paint-popover [data-field="size"]').evaluate(el => {
+    el.value = '42'; el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  assert.equal(await page.locator('#stroke-paint-popover .range-value').first().textContent(), '42 px');
+  await page.locator('[popovertarget="stroke-erase-popover"]').click();
+  assert.equal(await page.locator('.stroke-parameter-popover:popover-open').count(), 1);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.stroke-parameter-popover:popover-open').count(), 0);
+  await page.locator('[popovertarget="stroke-paint-popover"]').click();
+  await page.keyboard.press('Escape');
   const beforeBrush = (await state()).revision;
   const box = await page.locator("#editor-canvas").boundingBox();
   await page.mouse.move(box.x + box.width / 2 - 30, box.y + box.height / 2);
@@ -187,15 +239,17 @@ try {
   await shot("workspace");
   await shot("compress");
   await page.locator("#apply-button").click();
-  await waitText("current-info", "WEBP");
+  await waitCurrent("format", "WEBP");
   assert.equal((await state()).current.quality, 45);
   const compressed = await payload();
   assert.notDeepEqual(compressed, beforeCompress);
   const downloadEvent = page.waitForEvent("download");
   await page.locator("#save-button").click();
+  await page.locator("#save-default").click();
   const downloaded = await downloadEvent;
   assert.ok(downloaded.suggestedFilename().endsWith(".webp"));
   assert.deepEqual(await readFile(await downloaded.path()), compressed);
+  await page.locator("#view-size-button").click();
   await page.locator("#actual-button").click();
   assert.equal(await page.locator("#zoom").textContent(), "100%");
   await page.locator("#compare-button").hover();
@@ -211,7 +265,7 @@ try {
     route,
   );
   await page.locator("#redo-button").click();
-  await waitText("current-info", "WEBP");
+  await waitCurrent("format", "WEBP");
   await page.locator("#theme-button").click();
   await shot("dark");
   await page.locator("#theme-button").click();

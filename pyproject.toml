@@ -27,7 +27,7 @@ photocraft = ["assets/*", "web/*"]
 version = {attr = "photocraft.version.__package_version__"}
 
 [tool.pytest.ini_options]
-testpaths = ["tests/web", "tests/test_core.py", "tests/test_compression.py", "tests/test_config.py", "tests/test_version.py", "tests/test_rendering.py"]
+testpaths = ["tests/web", "tests/test_core.py", "tests/test_compression.py", "tests/test_config.py", "tests/test_version.py", "tests/test_rendering.py", "tests/test_strokes.py"]
 
 [tool.ruff]
 line-length = 110

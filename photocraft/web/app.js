@@ -1,5 +1,6 @@
 import { icon } from "./icons.js";
 import { EditorCanvas } from "./canvas.js";
+import { FILTERS, filterParams } from "./filters.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (v) =>
@@ -14,14 +15,13 @@ const uid = () =>
   globalThis.crypto?.randomUUID?.() ||
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const TOOLS = [
-  ["crop", "裁剪", "crop"],
-  ["background", "背景色", "background"],
-  ["rotate", "旋转翻转", "rotate"],
+  ["crop", "裁剪与旋转", "crop"],
   ["brush", "画笔", "brush"],
   ["mosaic", "马赛克", "mosaic"],
   ["blur", "局部模糊", "blur"],
+  ["enhance", "调整", "settings"],
+  ["filters", "图像增强", "enhance"],
   ["watermark", "水印", "watermark"],
-  ["enhance", "图片增强", "enhance"],
   ["compress", "图像压缩", "compress"],
 ];
 let boot = null,
@@ -35,7 +35,6 @@ let boot = null,
   timer = null,
   applying = false,
   gesture = uid(),
-  toastTimer,
   savedRevision = -1;
 const defaults = {
   brightness: 1,
@@ -51,7 +50,6 @@ const defaults = {
 };
 const settings = {
   crop: { mode: "t:0", ratio_w: 16, ratio_h: 9, allow_resize: false },
-  background: { color: "#ffffff" },
   rotate: { angle: 0, flip: null, expand: true },
   brush: { size: 30, opacity: 1, color: "#ffffff", block: 12, erase: false },
   mosaic: { size: 30, opacity: 1, color: "#ffffff", block: 12 },
@@ -66,9 +64,9 @@ const settings = {
     row_spacing: 60,
     column_spacing: 80,
     multiple: false,
-    live: true,
   },
   enhance: { ...defaults },
+  filters: { preset: null, strength: 100 },
   compress: {
     format: "JPEG",
     quality: 95,
@@ -80,6 +78,10 @@ const settings = {
   },
 };
 
+let cropFrame = null;
+function cropFrameKey() { return session ? JSON.stringify([session.id, session.revision, settings.crop]) : ""; }
+const brushModes = { paint: { ...settings.brush }, erase: { ...settings.brush, erase: true } };
+
 function hydrate(root = document) {
   root.querySelectorAll("[data-icon]").forEach((el) => {
     el.innerHTML = icon(el.dataset.icon);
@@ -87,13 +89,8 @@ function hydrate(root = document) {
 }
 function status(text, busy = false) {
   $("status").textContent = text;
+  $("status").title = text;
   document.body.classList.toggle("busy", busy);
-}
-function toast(text) {
-  $("toast").textContent = text;
-  $("toast").hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => ($("toast").hidden = true), 3200);
 }
 function error(message) {
   $("error-message").textContent = String(message);
@@ -139,9 +136,16 @@ function info(data) {
       : "无损";
   return `${bytes(data.bytes)}  ·  ${data.width} × ${data.height} px  ·  ${data.format}\n${data.bytes.toLocaleString()} 字节  ·  ${encoding}${data.quality == null ? "" : ` · 质量 ${data.quality}`}`;
 }
+function showInfo(id, data, warning = "") {
+  const details = info(data);
+  const element = $(id);
+  element.textContent = details.split("\n")[0] +
+    (data?.quality == null ? "" : ` · 质量 ${data.quality}`) +
+    (warning ? ` · ${warning}` : "");
+  element.title = details + (warning ? "\n" + warning : "");
+}
 function showCurrent() {
   if (!session) return;
-  $("current-info").textContent = info(session.current);
   $("filename").textContent = session.name;
   $("filename").title = `原文件：${info(session.original)}`;
   $("undo-button").disabled = !session.can_undo || applying;
@@ -151,11 +155,13 @@ function showCurrent() {
 }
 function showAppliedPreview() {
   if (!session) return;
-  $("preview-badge").textContent = "与当前一致";
-  $("preview-info").textContent = info(session.current);
+  showInfo("preview-info", session.current);
 }
 function updateApply() {
   canvas.blocked = applying;
+  const remove = $("remove-marks");
+  if (remove) remove.disabled = applying || !session?.can_remove_marks;
+  syncGeometryControls();
   const automatic = ["brush", "mosaic", "blur", "enhance"].includes(tool);
   $("apply-button").disabled =
     !session ||
@@ -168,13 +174,30 @@ function updateApply() {
     : "应用当前功能的调整，之后才会参与保存。";
 }
 const canvas = new EditorCanvas($("editor-canvas"), {
-  zoom: (value) => ($("zoom").textContent = `${Math.round(value * 100)}%`),
+  zoom: (value) => {
+    $("zoom").textContent = `${Math.round(value * 100)}%`;
+    $("view-size-value").textContent = canvas.autoFit ? "适应窗口" : Math.abs(value - 1) < 0.00001 ? "实际大小" : "自定义缩放";
+  },
   crop: (rect) => {
     if (tool !== "crop") return;
     const w = $("crop-width"),
       h = $("crop-height");
     if (w) w.value = rect.w;
     if (h) h.value = rect.h;
+    if (session) cropFrame = { key: cropFrameKey(), rect: { ...rect } };
+    const summary = $("crop-size-summary");
+    const selected = template();
+    if (summary) {
+      summary.textContent = selected ? `${selected.width} × ${selected.height} px` : `${rect.w} × ${rect.h} px`;
+      summary.title = summary.textContent;
+    }
+    const selectionSize = $("crop-selection-size");
+    if (selectionSize) selectionSize.textContent = `取景 ${rect.w} × ${rect.h} px`;
+    const preset = $("crop-preset-summary");
+    if (preset && settings.crop.mode === "custom") {
+      preset.textContent = `自定义比例 ${settings.crop.ratio_w}:${settings.crop.ratio_h}`;
+      preset.title = preset.textContent;
+    }
     if (session) schedule();
   },
   stroke: (body) => performStroke(body),
@@ -198,10 +221,54 @@ function resetCrop() {
 }
 function range(name, label, min, max, step = 1, suffix = "", extra = "") {
   const value = settings[tool][name];
-  return `<div class="range-field"><div class="range-label"><span>${label}</span><output class="range-value" for="field-${name}">${Number(value).toFixed(step < 1 ? 2 : 0)}${suffix}</output></div><input id="field-${name}" data-field="${name}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" ${extra} aria-label="${label}"></div>`;
+  return `<div class="range-field"><div class="range-label"><span>${label}</span><output class="range-value" for="field-${name}">${Number(value).toFixed(step < 1 ? 2 : 0)}${suffix}</output></div><input id="field-${name}" data-field="${name}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" style="--range-progress: ${((value - min) / (max - min)) * 100}%" ${extra} aria-label="${label}"></div>`;
 }
+function strokeParameter(name, label, min, max, step = 1, suffix = "") {
+  const value = settings[tool][name];
+  const display = name === "opacity" ? `${Math.round(value * 100)}%` : `${value}${suffix}`;
+  const id = `stroke-${name}-popover`;
+  return `<div class="stroke-parameter"><button type="button" class="stroke-parameter-trigger" popovertarget="${id}" aria-expanded="false" aria-controls="${id}" aria-haspopup="dialog"><span>${label}</span><span class="stroke-parameter-value" data-stroke-value="${name}">${display}</span>${icon("chevron", 12)}</button><div id="${id}" class="stroke-parameter-popover" popover="auto" role="dialog" aria-label="${label}"><div class="range-field"><div class="range-label"><label for="field-${name}">${label}</label><output class="range-value" for="field-${name}" ${name === "opacity" ? 'data-percent="true"' : ""}>${display}</output></div><input id="field-${name}" data-field="${name}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}" style="--range-progress:${((value - min) / (max - min)) * 100}%"></div></div></div>`;
+}
+function brushModePopover(mode, label) {
+  const params = brushModes[mode];
+  const slider = (name, title, min, max, step, suffix = "") => {
+    const id = `brush-${mode}-${name}`;
+    const value = params[name];
+    const display = name === "opacity" ? `${Math.round(value * 100)}%` : `${value}${suffix}`;
+    return `<div class="range-field"><div class="range-label"><label for="${id}">${title}</label><output class="range-value" for="${id}" ${name === "opacity" ? 'data-percent="true"' : ""}>${display}</output></div><input id="${id}" type="range" data-field="${name}" data-brush-mode="${mode}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${title}"></div>`;
+  };
+  const colors = mode === "paint" ? `<div class="brush-colors"><div class="brush-color-row"><label for="brush-paint-color">颜色</label><input id="brush-paint-color" type="color" data-field="color" data-brush-mode="paint" value="${esc(params.color)}" aria-label="画笔颜色"><input type="text" class="brush-color-hex" data-field="color" data-brush-mode="paint" value="${esc(params.color)}" maxlength="7" pattern="#[0-9a-fA-F]{6}" aria-label="画笔颜色十六进制"></div><div class="brush-swatches">${boot.colors.map(value => `<button type="button" class="swatch" data-brush-color="${esc(value)}" style="background:${esc(value)}" aria-label="颜色 ${esc(value)}" aria-pressed="${params.color.toLowerCase() === value.toLowerCase()}"></button>`).join("")}</div></div>` : "";
+  const id = `stroke-${mode}-popover`;
+  return `<div class="stroke-parameter"><button type="button" class="stroke-parameter-trigger brush-mode-trigger" data-brush-select="${mode}" popovertarget="${id}" aria-controls="${id}" aria-haspopup="dialog" aria-expanded="false" aria-pressed="${settings.brush.erase === (mode === "erase")}">${icon(mode === "paint" ? "brush" : "erase", 17)}<span>${label}</span>${icon("chevron", 12)}</button><div id="${id}" class="stroke-parameter-popover brush-mode-popover" data-brush-mode="${mode}" popover="auto" role="dialog" aria-label="${label}设置">${slider("size", "大小", 1, 100, 1, " px")}${slider("opacity", "不透明度", 0.01, 1, 0.01)}${colors}</div></div>`;
+}
+function selectBrushMode(mode) {
+  brushModes[settings.brush.erase ? "erase" : "paint"] = { ...settings.brush };
+  settings.brush = { ...brushModes[mode], erase: mode === "erase" };
+  canvas.brush = { ...settings.brush };
+  document.querySelectorAll("[data-brush-select]").forEach(button => button.setAttribute("aria-pressed", button.dataset.brushSelect === mode));
+}
+function positionStrokePopover(popover, button) {
+  const rect = button.getBoundingClientRect();
+  const filters = popover.id === "filter-presets-popover";
+  const width = Math.min(filters ? 640 : 264, window.innerWidth - 24);
+  const left = filters ? rect.left : rect.left + rect.width / 2 - width / 2;
+  popover.style.left = `${Math.max(12, Math.min(left, window.innerWidth - width - 12))}px`;
+  popover.style.top = rect.top < 120 ? `${rect.bottom + 8}px` : "auto";
+  popover.style.bottom = rect.top < 120 ? "auto" : `${window.innerHeight - rect.top + 8}px`;
+}
+function repositionStrokePopovers() {
+  document.querySelectorAll(".stroke-parameter-popover:popover-open").forEach(popover => {
+    const button = document.querySelector(`[popovertarget="${popover.id}"]`);
+    if (button) positionStrokePopover(popover, button);
+  });
+}
+window.addEventListener("resize", repositionStrokePopovers);
+window.addEventListener("scroll", repositionStrokePopovers, true);
 function check(name, label) {
   return `<label class="check"><input type="checkbox" data-field="${name}" ${settings[tool][name] ? "checked" : ""}>${label}</label>`;
+}
+function toggle(name, label) {
+  return `<button type="button" class="adjust-toggle" data-toggle="${name}" aria-pressed="${Boolean(settings[tool][name])}">${icon("check", 14)}${label}</button>`;
 }
 function color(name, label) {
   const value = settings[tool][name];
@@ -273,108 +340,224 @@ $("color-form").addEventListener("submit", (event) => {
     schedule();
   }
 });
+function effectPopover(id, label, body, summary = "") {
+  return `<div class="stroke-parameter"><button type="button" class="stroke-parameter-trigger" popovertarget="${id}" aria-controls="${id}" aria-haspopup="dialog" aria-expanded="false"><span>${label}</span>${summary ? `<span class="stroke-parameter-value" data-effect-summary="${id === "filter-strength-popover" ? "strength" : "preset"}">${summary}</span>` : ""}${icon("chevron", 12)}</button><div id="${id}" class="stroke-parameter-popover effect-parameter-popover" popover="auto" role="dialog" aria-label="${label}">${body}</div></div>`;
+}
+function panelRoot() {
+  if (["crop", "rotate"].includes(tool)) return $("crop-controls");
+  if (["enhance", "filters", "watermark"].includes(tool)) return $("effect-controls");
+  return ["brush", "mosaic", "blur"].includes(tool) ? $("stroke-controls") : $("properties");
+}
 function panel() {
   const names = {
-    crop: ["裁剪", "选择规格、调整取景，确认后点击上方「应用」。"],
-    background: ["背景色", "为透明或半透明区域填充颜色。"],
-    rotate: ["旋转与翻转", "调整方向或角度，让画面恰到好处。"],
+    crop: ["裁剪与旋转", "调整构图与方向，满意后点击「应用」。"],
+    rotate: ["裁剪与旋转", "调整构图与方向，满意后点击「应用」。"],
     brush: ["画笔与修正", "在画面上绘制，或擦除为透明。"],
     mosaic: ["马赛克", "沿笔触遮挡画面中的敏感信息。"],
     blur: ["局部模糊", "柔化笔触经过的区域，保留其余细节。"],
     watermark: ["文字水印", "整页重复平铺，预览满意后再应用。"],
-    enhance: ["图片增强", "调整即应用，滑块保留当前位置。"],
+    filters: ["图像增强", "选择一种风格，调整强度，满意后点击「应用」。"],
+    enhance: ["调整", "让光线、颜色与细节恰到好处。调整自动应用。"],
     compress: ["图像压缩", "调整格式与画质，保持当前像素尺寸。"],
   };
   const [title, description] = names[tool];
   let content = "";
-  const s = settings[tool];
-  if (tool === "crop") {
+  const geometry = ["crop", "rotate"].includes(tool);
+  const s = settings[geometry ? "crop" : tool];
+  if (geometry) {
     const t = template();
-    content = `<div class="section-heading"><span>裁剪方式</span></div><select id="crop-mode" aria-label="裁剪方式">${boot.templates.map((t, i) => `<option value="t:${i}" ${s.mode === `t:${i}` ? "selected" : ""}>${esc(t.name)}</option>`).join("")}<option value="free" ${s.mode === "free" ? "selected" : ""}>自由裁剪</option><option value="custom" ${s.mode === "custom" ? "selected" : ""}>按比例裁剪</option></select>`;
-    if (t)
-      content += `<div class="card"><div class="card-title">模板尺寸</div><div class="two-fields"><label class="stacked">宽度 / px<input type="number" value="${t.width}" readonly aria-label="模板宽度"></label><label class="stacked">高度 / px<input type="number" value="${t.height}" readonly aria-label="模板高度"></label></div></div><div class="card">${check("allow_resize", "允许缩放")}<p class="small-hint">${s.allow_resize ? "将选区缩放至模板尺寸。" : "按模板像素裁剪，不进行缩放。"}<br>放大可能模糊，缩小会损失细节。</p></div>`;
-    else if (s.mode === "custom")
-      content += `<div class="card"><div class="card-title">宽高比例</div><div class="two-fields"><label class="stacked">宽<input type="number" min="1" max="30000" data-field="ratio_w" value="${s.ratio_w}"></label><label class="stacked">高<input type="number" min="1" max="30000" data-field="ratio_h" value="${s.ratio_h}"></label></div></div>`;
-    else
-      content += `<div class="card"><div class="card-title">裁剪框像素</div><div class="two-fields"><label class="stacked">宽度 / px<input id="crop-width" type="number" min="1" max="${session?.current.width || 30000}" value="${canvas.crop?.w || 295}"></label><label class="stacked">高度 / px<input id="crop-height" type="number" min="1" max="${session?.current.height || 30000}" value="${canvas.crop?.h || 413}"></label></div></div>`;
-  } else if (tool === "background")
-    content = `<div class="card">${color("color", "填充颜色")}</div><p class="small-hint">仅填充透明区域，不会自动抠图。可先用橡皮擦擦除原背景。</p>`;
-  else if (tool === "rotate")
-    content = `<div class="panel-buttons"><button id="rotate-left">${icon("undo", 16)}左转 90°</button><button id="rotate-right">${icon("redo", 16)}右转 90°</button></div>${range("angle", "旋转角度", -180, 180, 1, "°")}<div class="panel-buttons"><button id="flip-horizontal" class="${s.flip === "horizontal" ? "active" : ""}">水平翻转</button><button id="flip-vertical" class="${s.flip === "vertical" ? "active" : ""}">垂直翻转</button></div>${check("expand", "扩展画布，保留完整内容")}`;
-  else if (["brush", "mosaic", "blur"].includes(tool)) {
-    content =
-      range("size", "画笔大小", 1, 100, 1, " px") +
-      range("opacity", "不透明度", 0.01, 1, 0.01);
-    if (tool === "brush")
-      content +=
-        color("color", "画笔颜色") + check("erase", "橡皮擦（擦除为透明）");
-    else
-      content += range(
-        "block",
-        tool === "mosaic" ? "块大小" : "模糊强度",
-        2,
-        100,
-        1,
-        " px",
-      );
-    content +=
-      '<p class="small-hint">松开鼠标后自动应用。Ctrl+Z 撤销上一笔。</p>';
+    const rect = canvas.crop || (cropFrame?.key === cropFrameKey() ? cropFrame.rect : null);
+    const width = t?.width || rect?.w || session?.current.width || 295;
+    const height = t?.height || rect?.h || session?.current.height || 413;
+    const label = t?.name || (s.mode === "custom" ? `自定义比例 ${s.ratio_w}:${s.ratio_h}` : "自由裁剪");
+    const popover = (id, name, summary, body) => `<div class="stroke-parameter"><button type="button" class="stroke-parameter-trigger crop-parameter-trigger" popovertarget="${id}" aria-haspopup="dialog" aria-expanded="false" aria-controls="${id}"><span>${name}</span><span class="crop-selection" title="${esc(summary)}" id="${id === "crop-size-popover" ? "crop-size-summary" : "crop-preset-summary"}">${esc(summary)}</span>${icon("chevron", 12)}</button><div id="${id}" class="stroke-parameter-popover crop-parameter-popover" popover="auto" role="dialog" aria-label="${name}">${body}</div></div>`;
+    const choices = `<label class="stacked">裁剪方式<select id="crop-mode" aria-label="裁剪方式">${boot.templates.map((preset, i) => `<option value="t:${i}" ${s.mode === `t:${i}` ? "selected" : ""}>${esc(preset.name)}</option>`).join("")}<option value="free" ${s.mode === "free" ? "selected" : ""}>自由裁剪</option><option value="custom" ${s.mode === "custom" ? "selected" : ""}>按比例裁剪</option></select></label><p class="small-hint">选择规格后，在画面中拖动取景框。</p>`;
+    let dimensions = "";
+    if (t) dimensions = `<div class="two-fields"><label class="stacked">宽度 / px<input type="number" value="${width}" readonly aria-label="模板宽度"></label><label class="stacked">高度 / px<input type="number" value="${height}" readonly aria-label="模板高度"></label></div><p id="crop-selection-size" class="small-hint">取景 ${rect?.w || width} × ${rect?.h || height} px</p><div class="resize-card ${s.allow_resize ? "is-enabled" : ""}"><button type="button" class="resize-control" data-toggle="allow_resize" aria-pressed="${s.allow_resize}" aria-describedby="resize-description resize-quality"><span class="resize-label">允许缩放</span><span class="resize-state">${s.allow_resize ? "已开启" : "已关闭"}</span><span class="resize-switch" aria-hidden="true"></span></button><p id="resize-description" class="resize-description">${s.allow_resize ? "将选区缩放至模板尺寸，灵活调整取景。" : "按模板像素裁剪，保留原始像素。"}</p><p id="resize-quality" class="resize-quality">${icon("info", 14)}<span>放大可能模糊，缩小可能丢失细节。</span></p></div>`;
+    else if (s.mode === "custom") dimensions = `<div class="two-fields"><label class="stacked">比例宽<input type="number" min="1" max="30000" data-field="ratio_w" value="${s.ratio_w}" aria-label="比例宽"></label><label class="stacked">比例高<input type="number" min="1" max="30000" data-field="ratio_h" value="${s.ratio_h}" aria-label="比例高"></label></div><p class="small-hint">拖动取景框边角时保持所选比例。</p>`;
+    else dimensions = `<div class="two-fields"><label class="stacked">宽度 / px<input id="crop-width" type="number" min="1" max="${session?.current.width || 30000}" value="${width}" aria-label="裁剪宽度"></label><label class="stacked">高度 / px<input id="crop-height" type="number" min="1" max="${session?.current.height || 30000}" value="${height}" aria-label="裁剪高度"></label></div><p class="small-hint">输入像素或拖动取景框，尺寸会同步更新。</p>`;
+    let exam = "";
+    if (t?.name.startsWith("教师资格考试")) exam = `<p class="small-hint">150 × 200 px 为参考尺寸，请核对报考地当次公告。通常要求白底、JPG/JPEG、不超过 200KB；格式与画质可在「图像压缩」中调整。</p>`;
+    if (t?.name.startsWith("国家公务员考试")) exam = `<p class="small-hint">国考源照片宽至少 295 px、高至少 413 px，蓝底或白底，JPG/JPEG。仍需官方照片处理工具；省考请核对当地公告。</p>`;
+    content = popover("crop-preset-popover", "裁剪规格", label, choices + exam) +
+      popover("crop-size-popover", t ? "尺寸与缩放" : s.mode === "custom" ? "宽高比例" : "裁剪尺寸", `${width} × ${height} px`, dimensions) +
+      (tool === "rotate" ? `<button id="resume-crop" class="crop-resume" type="button">${icon("crop", 15)}<span>调整取景</span></button>` : "");
+  } else if (tool === "brush") {
+    brushModes[s.erase ? "erase" : "paint"] = { ...s };
+    content = brushModePopover("paint", "画笔") + brushModePopover("erase", "橡皮擦") +
+      `<button type="button" id="remove-marks" class="remove-marks" title="单击撤销上一笔；长按撤销当前连续绘制的全部笔迹" aria-description="单击撤销上一笔，长按撤销当前连续绘制的全部笔迹，不跨越裁剪等其他编辑" ${!session?.can_remove_marks || applying ? "disabled" : ""}>${icon("undo", 15)}<span>移除标记</span></button>`;
+  } else if (["mosaic", "blur"].includes(tool)) {
+    content = strokeParameter("size", "画笔大小", 1, 100, 1, " px") +
+      strokeParameter("opacity", "不透明度", 0.01, 1, 0.01) +
+      strokeParameter("block", tool === "mosaic" ? "块大小" : "模糊强度", 2, 100, 1, " px");
   } else if (tool === "watermark") {
-    content = `<label class="field">水印文字<input id="mark-text" type="text" data-field="text" value="${esc(s.text)}" maxlength="50" title="最多 50 字，超长文字不允许。" aria-label="水印文字"></label><label class="stacked">服务端字体<select data-field="font" aria-label="服务端字体">${boot.fonts.map((f) => `<option value="${f.id}" ${s.font === f.id ? "selected" : ""}>${esc(f.name)}</option>`).join("")}</select></label><p class="small-hint">字体来自当前服务，容器内置中文字体。</p>`;
-    content +=
-      range("size", "字号", 4, 200, 1, " px") + color("color", "文字颜色");
-
-    content +=
-      range("opacity", "不透明度", 0.01, 1, 0.01) +
-      range("angle", "倾斜角度", -180, 180, 1, "°") +
-      range("row_spacing", "行间距", 0, 500, 1, " px") +
-      range("column_spacing", "列间距", 0, 500, 1, " px") +
-      check("live", "实时预览") +
-      check("multiple", "允许多重水印");
-    content +=
-      '<button id="clear-marks" class="full-button secondary">清除已应用水印</button>';
+    const text = `<label class="field">水印文字<input id="mark-text" type="text" data-field="text" value="${esc(s.text)}" maxlength="50" title="最多 50 字，超长文字不允许。" aria-label="水印文字"></label><label class="stacked">系统字体<select data-field="font" aria-label="系统字体">${boot.fonts.map((f) => `<option value="${f.id}" ${s.font === f.id ? "selected" : ""}>${esc(f.name)}</option>`).join("")}</select></label><p class="small-hint">字体来自服务所在系统，字符支持取决于所选字体。</p>`;
+    const colors = `<div class="brush-colors watermark-colors"><div class="brush-color-row"><label for="watermark-color">颜色</label><input id="watermark-color" type="color" data-field="color" data-watermark-color value="${esc(s.color)}" aria-label="水印颜色"><input type="text" class="brush-color-hex" data-field="color" data-watermark-color value="${esc(s.color)}" maxlength="7" pattern="#[0-9a-fA-F]{6}" aria-label="水印颜色十六进制"></div><div class="brush-swatches">${boot.colors.map(value => `<button type="button" class="swatch" data-watermark-swatch="${esc(value)}" style="background:${esc(value)}" aria-label="颜色 ${esc(value)}" aria-pressed="${s.color.toLowerCase() === value.toLowerCase()}"></button>`).join("")}</div></div>`;
+    const style = range("size", "字号", 4, 200, 1, " px") + range("opacity", "不透明度", 0.01, 1, 0.01) + colors;
+    const layout = range("angle", "倾斜角度", -180, 180, 1, "°") + range("row_spacing", "行间距", 0, 500, 1, " px") + range("column_spacing", "列间距", 0, 500, 1, " px");
+    content = `<div class="stroke-fields watermark-fields">${effectPopover("watermark-text-popover", "文字与字体", text)}${effectPopover("watermark-style-popover", "样式", style)}${effectPopover("watermark-layout-popover", "排布", layout)}${check("multiple", "多重水印")}<button id="clear-marks" class="effect-reset" type="button">清除水印</button></div>`;
   } else if (tool === "enhance") {
-    content =
+    const light = `<div class="effect-auto">${toggle("autocontrast", "自动对比度")}</div>` +
       range("brightness", "亮度", 0.1, 3, 0.01) +
-      range(
-        "contrast",
-        "对比度",
-        0.1,
-        3,
-        0.01,
-        "",
-        s.autocontrast ? "disabled" : "",
-      ) +
-      check("autocontrast", "自动对比度") +
+      range("contrast", "对比度", 0.1, 3, 0.01, "", s.autocontrast ? "disabled" : "") +
+      range("gamma", "伽马", 0.1, 3, 0.01) + range("equalize", "明暗均衡", 0, 1, 0.01);
+    const colors = `<div class="effect-auto">${toggle("white_balance", "自动白平衡")}</div>` +
       range("saturation", "饱和度", 0, 3, 0.01) +
-      range("sharpness", "锐度", 0, 5, 0.01) +
-      range(
-        "temperature",
-        "色温",
-        -1,
-        1,
-        0.01,
-        "",
-        s.white_balance ? "disabled" : "",
-      ) +
-      check("white_balance", "自动白平衡") +
-      range("gamma", "伽马", 0.1, 3, 0.01) +
-      range("denoise", "降噪强度", 0, 1, 0.01) +
-      range("equalize", "明暗均衡", 0, 1, 0.01) +
-      '<button id="reset-enhance" class="full-button secondary">恢复默认参数</button>';
+      range("temperature", "色温", -1, 1, 0.01, "", s.white_balance ? "disabled" : "");
+    const details = range("sharpness", "锐度", 0, 5, 0.01) + range("denoise", "降噪强度", 0, 1, 0.01);
+    content = `<div class="stroke-fields">${effectPopover("adjust-light-popover", "光线", light)}${effectPopover("adjust-color-popover", "颜色", colors)}${effectPopover("adjust-detail-popover", "细节", details)}<button id="reset-enhance" class="effect-reset" type="button">${icon("reset", 15)}重置调整</button></div>`;
+  } else if (tool === "filters") {
+    const selected = FILTERS.find((item) => item.id === s.preset);
+    const cards = `<div class="filter-grid" role="group" aria-label="增强模板">${FILTERS.map((item) => `<button type="button" class="filter-card" data-filter="${item.id}" aria-pressed="${s.preset === item.id}" title="${item.hint}" ${session ? "" : "disabled"}><span class="filter-thumbnail" style="--filter-style: ${item.thumbnail}"><img alt="" hidden><span class="filter-placeholder">${icon("image", 24)}</span><span class="filter-selected">${icon("check", 12)}</span></span><span class="filter-name">${item.name}</span></button>`).join("")}</div>`;
+    const strength = `<p class="effect-selection" id="filter-selection">${selected?.name || "自定义调整"}</p>${range("strength", "效果强度", 0, 100, 1, "%", !session || !s.preset || s.preset === "none" ? "disabled" : "")}<p class="small-hint">选择模板后先预览，点击「应用」后生效。</p>`;
+    content = `<div class="filter-bottom-row">${effectPopover("filter-presets-popover", "滤镜", cards, selected?.name || "自定义")}${effectPopover("filter-strength-popover", "强度", strength, `${s.strength}%`)}</div>`;
   } else if (tool === "compress") {
     const lossy = ["JPEG", "WEBP"].includes(s.format);
     content = `<label class="field">文件格式<select data-field="format" aria-label="文件格式">${["JPEG", "PNG", "WEBP", "BMP", "TIFF"].map((v) => `<option ${v === s.format ? "selected" : ""}>${v}</option>`).join("")}</select></label><p class="small-hint">${lossy ? "适合照片，可通过画质控制文件体积。" : "使用无损编码，保留图像细节。"}</p><div class="card">${check("live", "在画布查看压缩效果")}</div>`;
     if (lossy) content += range("quality", "画质", 1, 100);
     content += `<details><summary>高级设置</summary>${["JPEG", "BMP"].includes(s.format) ? "" : check("keep_alpha", "保留透明背景")}${color("background", "透明区域填充色")}${check("keep_exif", "保留 EXIF（可能含位置）")}${check("keep_icc", "保留 ICC 色彩配置")}</details><p class="small-hint">调整仅预览。应用后，保存才会使用所选格式与画质。</p>`;
   }
-  $("properties").innerHTML =
-    `<div class="panel-eyebrow">PHOTO WORKSPACE</div><h2>${title}</h2><p class="panel-description">${description}</p>${content}`;
+  $("properties").classList.toggle("adjust-panel", tool === "enhance" || tool === "filters");
+  $("properties").classList.toggle("geometry-panel", geometry);
+  const stroke = ["brush", "mosaic", "blur"].includes(tool);
+  const effects = ["enhance", "filters", "watermark"].includes(tool);
+  document.querySelector(".app-body").classList.toggle("stroke-workspace", stroke || geometry || effects);
+  $("properties").hidden = stroke || geometry || effects;
+  $("effect-controls").hidden = !effects || !session;
+  $("effect-controls").classList.toggle("adjust-panel", effects);
+  $("effect-controls").setAttribute("aria-label", `${title}参数`);
+  $("crop-controls").hidden = !geometry || !session;
+  $("stroke-controls").hidden = !stroke || !session;
+  $("stroke-controls").setAttribute("aria-label", `${title}参数`);
+  $("stroke-controls").classList.toggle("is-brush", tool === "brush");
+  if (effects) {
+    $("properties").innerHTML = "";
+    $("stroke-controls").innerHTML = "";
+    $("crop-controls").innerHTML = "";
+    $("effect-controls").innerHTML = content;
+  } else if (geometry) {
+    $("effect-controls").innerHTML = "";
+    $("properties").innerHTML = "";
+    $("stroke-controls").innerHTML = "";
+    $("crop-controls").innerHTML = `<div class="stroke-fields">${content}</div>`;
+  } else if (stroke) {
+    $("effect-controls").innerHTML = "";
+    $("crop-controls").innerHTML = "";
+    $("properties").innerHTML = "";
+    $("stroke-controls").innerHTML = `<div class="stroke-fields">${content}</div>`;
+  } else {
+    $("effect-controls").innerHTML = "";
+    $("crop-controls").innerHTML = "";
+    $("stroke-controls").innerHTML = "";
+    $("properties").innerHTML = `<h2>${title}</h2><p class="panel-description">${description}</p>${tool === "rotate" ? '<button id="resume-crop" class="full-button" type="button">调整裁剪框</button>' : ""}${content}`;
+  }
+  syncGeometryControls();
   wirePanel();
+  if (tool === "filters") loadFilterThumbnails();
   updateApply();
 }
+let filterThumbnail = { key: "", src: "" };
+async function loadFilterThumbnails() {
+  if (!session) return;
+  const key = session.image_url;
+  try {
+    if (filterThumbnail.key !== key) {
+      const image = new Image();
+      image.src = key;
+      await image.decode();
+      if (session?.image_url !== key || tool !== "filters") return;
+      const thumb = document.createElement("canvas");
+      thumb.width = 240;
+      thumb.height = Math.max(1, Math.round(240 * image.naturalHeight / image.naturalWidth));
+      // Bound both dimensions for unusually tall photos.
+      if (thumb.height > 240) {
+        thumb.width = Math.max(1, Math.round(240 * image.naturalWidth / image.naturalHeight));
+        thumb.height = 240;
+      }
+      thumb.getContext("2d").drawImage(image, 0, 0, thumb.width, thumb.height);
+      filterThumbnail = { key, src: thumb.toDataURL("image/png") };
+    }
+    panelRoot().querySelectorAll(".filter-thumbnail img").forEach((image) => {
+      image.src = filterThumbnail.src;
+      image.hidden = false;
+      image.nextElementSibling.hidden = true;
+    });
+  } catch {
+    // The placeholders remain usable if the current preview cannot be loaded.
+  }
+}
+function syncFilterSelection() {
+  if (!session) return;
+  const matches = (params) => params && Object.keys(defaults).every(
+    (key) => Math.abs(Number(params[key]) - Number(session.enhancement[key])) < 0.00001,
+  );
+  if (matches(filterParams(settings.filters.preset, settings.filters.strength, defaults))) return;
+  settings.filters = {
+    preset: FILTERS.find((item) => matches(filterParams(item.id, 100, defaults)))?.id || null,
+    strength: 100,
+  };
+}
 function wirePanel() {
-  $("properties")
+  wireRemoveMarks();
+  panelRoot().querySelectorAll(".stroke-parameter-trigger").forEach(button => {
+    const popover = $(button.getAttribute("popovertarget"));
+    popover.addEventListener("beforetoggle", event => {
+      button.setAttribute("aria-expanded", event.newState === "open");
+      if (event.newState === "open") {
+        if (button.dataset.brushSelect) selectBrushMode(button.dataset.brushSelect);
+        positionStrokePopover(popover, button);
+      }
+    });
+  });
+  panelRoot().querySelectorAll(".stroke-parameter-popover").forEach(popover => {
+    popover.addEventListener("toggle", () => {
+      if (!popover.matches(":popover-open")) return;
+      if (popover.getBoundingClientRect().top < 12) {
+        popover.style.top = "12px";
+        popover.style.bottom = "auto";
+      }
+    });
+  });
+  panelRoot().querySelectorAll("[data-brush-color]").forEach(button => {
+    button.addEventListener("click", () => {
+      const input = $("brush-paint-color");
+      input.value = button.dataset.brushColor;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+  panelRoot().querySelectorAll("[data-watermark-swatch]").forEach(button => {
+    button.addEventListener("click", () => {
+      const input = $("watermark-color");
+      input.value = button.dataset.watermarkSwatch;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  });
+  panelRoot().querySelectorAll("[data-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      settings.filters.preset = button.dataset.filter;
+      gesture = uid();
+      panel();
+      $("filter-presets-popover").showPopover();
+      panelRoot().querySelector(`[data-filter="${settings.filters.preset}"]`)?.focus();
+      schedule();
+    });
+  });
+  panelRoot().querySelectorAll("[data-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const name = button.dataset.toggle;
+      const target = tool === "rotate" && name === "allow_resize" ? "crop" : tool;
+      settings[target][name] = !settings[target][name];
+      if (target !== tool) { selectTool(target); return; }
+      gesture = uid();
+      const openId = button.closest("[popover]")?.id;
+      panel();
+      if (openId) $(openId)?.showPopover();
+      panelRoot().querySelector(`[data-toggle="${name}"]`)?.focus();
+      if (tool === "crop") resetCrop();
+      else schedule();
+    });
+  });
+  panelRoot()
     .querySelectorAll("[data-field]")
     .forEach((input) => {
       input.addEventListener(
@@ -396,17 +579,37 @@ function wirePanel() {
             (!Number.isFinite(value) || value <= 0)
           )
             return;
+          if (tool === "rotate") { settings.crop[key] = value; selectTool("crop"); return; }
+          if (input.dataset.brushMode) {
+            if (key === "color" && !/^#[0-9a-fA-F]{6}$/.test(value)) return;
+            brushModes[input.dataset.brushMode][key] = value;
+            if (key === "color") {
+              panelRoot().querySelectorAll('[data-brush-mode="paint"][data-field="color"]').forEach(field => { if (field !== input) field.value = value; });
+              panelRoot().querySelectorAll("[data-brush-color]").forEach(button => button.setAttribute("aria-pressed", button.dataset.brushColor.toLowerCase() === value.toLowerCase()));
+            }
+          }
+          if (input.hasAttribute("data-watermark-color")) {
+            if (!/^#[0-9a-fA-F]{6}$/.test(value)) return;
+            value = value.toLowerCase();
+            panelRoot().querySelectorAll("[data-watermark-color]").forEach(field => { if (field !== input) field.value = value; });
+            panelRoot().querySelectorAll("[data-watermark-swatch]").forEach(button => button.setAttribute("aria-pressed", button.dataset.watermarkSwatch.toLowerCase() === value));
+          }
           settings[tool][key] = value;
+          if (input.type === "range") input.style.setProperty("--range-progress", `${((value - Number(input.min)) / (Number(input.max) - Number(input.min))) * 100}%`);
           const output =
             input.parentElement.querySelector("output") ||
             input.closest(".range-field")?.querySelector("output");
           if (output) {
-            const suffix = output.textContent.match(/(?: px|°)$/)?.[0] || "";
-            output.textContent =
-              Number(value).toFixed(Number(input.step) < 1 ? 2 : 0) + suffix;
+            const suffix = output.textContent.match(/(?: px|°|%)$/)?.[0] || "";
+            output.textContent = output.dataset.percent
+              ? `${Math.round(Number(value) * 100)}%`
+              : Number(value).toFixed(Number(input.step) < 1 ? 2 : 0) + suffix;
+            const triggerValue = panelRoot().querySelector(`[data-stroke-value="${key}"]`);
+            if (triggerValue) triggerValue.textContent = output.textContent;
+            const effectValue = panelRoot().querySelector(`[data-effect-summary="${key}"]`);
+            if (effectValue) effectValue.textContent = output.textContent;
           }
           if (tool === "crop") {
-            panel();
             resetCrop();
           } else if (
             tool === "enhance" &&
@@ -433,31 +636,16 @@ function wirePanel() {
     });
   $("crop-mode")?.addEventListener("change", (e) => {
     settings.crop.mode = e.target.value;
+    if (tool !== "crop") { selectTool("crop"); return; }
     panel();
     resetCrop();
   });
+  $("resume-crop")?.addEventListener("click", () => selectTool("crop"));
   for (const id of ["crop-width", "crop-height"])
-    $(id)?.addEventListener("change", () =>
-      canvas.cropPixels(
-        Number($("crop-width").value),
-        Number($("crop-height").value),
-      ),
-    );
-  $("rotate-left")?.addEventListener("click", () => {
-    settings.rotate.angle = wrapAngle(settings.rotate.angle + 90);
-    panel();
-    schedule();
-  });
-  $("rotate-right")?.addEventListener("click", () => {
-    settings.rotate.angle = wrapAngle(settings.rotate.angle - 90);
-    panel();
-    schedule();
-  });
-  for (const flip of ["horizontal", "vertical"])
-    $(`flip-${flip}`)?.addEventListener("click", () => {
-      settings.rotate.flip = settings.rotate.flip === flip ? null : flip;
-      panel();
-      schedule();
+    $(id)?.addEventListener("change", async () => {
+      const width = Number($("crop-width").value), height = Number($("crop-height").value);
+      if (tool !== "crop") await selectTool("crop");
+      canvas.cropPixels(width, height);
     });
   $("reset-enhance")?.addEventListener("click", () => {
     settings.enhance = { ...defaults };
@@ -468,7 +656,7 @@ function wirePanel() {
   $("clear-marks")?.addEventListener("click", () =>
     directOperation("clear_watermarks", {}),
   );
-  $("properties")
+  panelRoot()
     .querySelectorAll("[data-pick-color]")
     .forEach((button) => {
       button.addEventListener("click", () =>
@@ -484,7 +672,7 @@ function wirePanel() {
         50
     ) {
       e.preventDefault();
-      toast("水印文字超长，不允许超过 50 字。");
+      status("水印文字超长，不允许超过 50 字。");
     }
   });
   $("mark-text")?.addEventListener("paste", (e) => {
@@ -496,10 +684,58 @@ function wirePanel() {
       50
     ) {
       e.preventDefault();
-      toast("水印文字超长，不允许超过 50 字。");
+      status("水印文字超长，不允许超过 50 字。");
     }
   });
 }
+function syncGeometryControls() {
+  const visible = Boolean(session && ["crop", "rotate"].includes(tool));
+  $("geometry-controls").hidden = !visible;
+  if (!visible) return;
+  const rotation = settings.rotate;
+  $("straighten-angle").value = rotation.angle;
+  $("straighten-angle").setAttribute("aria-valuetext", `${rotation.angle} 度`);
+  for (const flip of ["horizontal", "vertical"])
+    $(`flip-${flip}`).setAttribute("aria-pressed", rotation.flip === flip || rotation.flip === "both");
+  $("geometry-controls").querySelectorAll("button, input").forEach(el => el.disabled = applying);
+  $("crop-controls").querySelectorAll("button, input, select").forEach(el => el.disabled = applying);
+}
+let rotationPreviewing = false;
+let rotationPreviewAt = -Infinity;
+const ROTATION_PREVIEW_MS = 280;
+async function editGeometry(update, paced = false) {
+  if (!session || applying) return;
+  if (tool !== "rotate") await selectTool("rotate");
+  if (!paced) rotationPreviewing = false;
+  update(settings.rotate);
+  settings.rotate.angle = wrapAngle(settings.rotate.angle);
+  syncGeometryControls();
+  schedule(paced && !rotationPreviewing ? 0 : 230, paced && rotationPreviewing);
+}
+$("straighten-angle").addEventListener("input", e => {
+  const value = Number(e.target.value);
+  rotationPreviewing = true;
+  editGeometry(rotation => rotation.angle = value, true);
+});
+$("straighten-angle").addEventListener("change", () => {
+  rotationPreviewing = false;
+  if (tool === "rotate") schedule(0);
+});
+$("straighten-angle").addEventListener("pointercancel", () => {
+  rotationPreviewing = false;
+  if (tool === "rotate") schedule(0);
+});
+for (const [id, delta] of [["rotate-left", 1], ["rotate-right", -1]])
+  $(id).addEventListener("click", () => editGeometry(rotation => rotation.angle += delta * 90));
+for (const flip of ["horizontal", "vertical"])
+  $(`flip-${flip}`).addEventListener("click", () => editGeometry(rotation => {
+    const horizontal = rotation.flip === "horizontal" || rotation.flip === "both";
+    const vertical = rotation.flip === "vertical" || rotation.flip === "both";
+    const h = flip === "horizontal" ? !horizontal : horizontal;
+    const v = flip === "vertical" ? !vertical : vertical;
+    rotation.flip = h && v ? "both" : h ? "horizontal" : v ? "vertical" : null;
+  }));
+
 function wrapAngle(v) {
   while (v > 180) v -= 360;
   while (v < -180) v += 360;
@@ -508,6 +744,10 @@ function wrapAngle(v) {
 function operation() {
   if (!session || !draftActive) return null;
   let params = { ...settings[tool] };
+  if (tool === "filters") {
+    params = filterParams(settings.filters.preset, settings.filters.strength, defaults);
+    return params ? { revision: session.revision, tool: "enhance", params } : null;
+  }
   if (tool === "crop") {
     const r = canvas.crop;
     if (!r) return null;
@@ -518,6 +758,7 @@ function operation() {
       allow_resize: settings.crop.allow_resize,
     };
   }
+  if (tool === "rotate") params = { angle: settings.rotate.angle, flip: settings.rotate.flip, expand: true };
   if (tool === "watermark" || tool === "compress") delete params.live;
   if (tool === "compress")
     params = Object.fromEntries(
@@ -534,9 +775,9 @@ function operation() {
   return { revision: session.revision, tool, params };
 }
 function live() {
-  return !["watermark", "compress"].includes(tool) || settings[tool].live;
+  return tool !== "compress" || settings.compress.live;
 }
-function schedule() {
+function schedule(delay = 230, paced = false) {
   draftSeq++;
   draftActive = true;
   preview = null;
@@ -553,15 +794,15 @@ function schedule() {
         .catch(error);
     return;
   }
-  $("preview-badge").textContent = "未应用";
   $("preview-info").textContent = "正在计算预览实测…";
   if (running) pending = true;
-  else timer = setTimeout(() => runPreview(), 230);
+  else timer = setTimeout(() => runPreview(), paced ? Math.max(0, ROTATION_PREVIEW_MS - (performance.now() - rotationPreviewAt)) : delay);
 }
 async function acceptApplied(result, seq, { fit = false, reset = false } = {}) {
   if (!session || result.id !== session.id) return;
   const latest = seq === draftSeq;
   session = result;
+  if (latest && tool === "filters") settings.enhance = { ...session.enhancement };
   showCurrent();
   if (latest) {
     draftActive = false;
@@ -577,6 +818,7 @@ async function acceptApplied(result, seq, { fit = false, reset = false } = {}) {
   }
   if (reset) {
     settings.enhance = { ...session.enhancement };
+    syncFilterSelection();
     settings.compress = { ...settings.compress, ...session.compression };
     panel();
   }
@@ -590,6 +832,7 @@ function runPreview(showErrors = false) {
     sid = session.id,
     activeTool = tool,
     activeGesture = gesture;
+  if (activeTool === "rotate") rotationPreviewAt = performance.now();
   status("正在生成预览…", true);
   pending = false;
   running = (async () => {
@@ -598,13 +841,21 @@ function runPreview(showErrors = false) {
         method: "POST",
         body,
       });
-      if (!session || session.id !== sid || seq !== draftSeq) return null;
+      if (!session || session.id !== sid) return null;
+      if (seq !== draftSeq) {
+        // A paced rotation preview may finish while the user is still dragging.
+        // Display it without making it eligible for Apply; the latest request
+        // remains queued, and only an exact revision can be committed.
+        if (activeTool === "rotate" && tool === "rotate" && rotationPreviewing &&
+            activeGesture === gesture && body.revision === session.revision && !canvas.compareState) {
+          showInfo("preview-info", response.info, response.warning);
+          await canvas.setImage(response.image_url, [response.info.width, response.info.height]);
+        }
+        return null;
+      }
       preview = { ...response, seq };
-      $("preview-info").textContent =
-        info(response.info) + (response.warning ? "\n" + response.warning : "");
-      $("preview-badge").textContent = response.can_apply
-        ? "未应用"
-        : "与当前一致";
+      showInfo("preview-info", response.info, response.warning);
+
       if (activeTool !== "crop" && !canvas.compareState && live())
         await canvas.setImage(response.image_url, [
           response.info.width,
@@ -622,13 +873,10 @@ function runPreview(showErrors = false) {
         await acceptApplied(result, seq);
         status("增强已应用");
       } else status(response.warning || "预览已更新");
-      if (activeTool === "background" && !response.can_apply)
-        $("apply-button").disabled = true;
       return response;
     } catch (e) {
       if (session?.id === sid && seq === draftSeq) {
         $("preview-info").textContent = e.message;
-        $("preview-badge").textContent = "无法应用";
         status("请检查调整参数");
         if (showErrors) error(e.message);
       }
@@ -639,11 +887,9 @@ function runPreview(showErrors = false) {
   })().finally(() => {
     running = null;
     updateApply();
-    if (preview && !preview.can_apply && tool === "background")
-      $("apply-button").disabled = true;
     if (pending && session) {
       pending = false;
-      timer = setTimeout(() => runPreview(), 80);
+      timer = setTimeout(() => runPreview(), tool === "rotate" && rotationPreviewing ? Math.max(0, ROTATION_PREVIEW_MS - (performance.now() - rotationPreviewAt)) : 80);
     }
   });
   return running;
@@ -669,12 +915,11 @@ async function applyCurrent() {
       settings.rotate = {
         angle: 0,
         flip: null,
-        expand: settings.rotate.expand,
+        expand: true,
       };
       panel();
     }
-    toast("已应用，保存将使用当前结果");
-    status("调整已应用");
+    status(tool === "filters" ? `已应用「${FILTERS.find((item) => item.id === settings.filters.preset)?.name || "模板"}」，保存将使用此结果` : "已应用，保存将使用当前结果");
   } catch (e) {
     error(e.message);
   } finally {
@@ -717,6 +962,58 @@ async function directOperation(name, params) {
     showCurrent();
   }
 }
+function wireRemoveMarks() {
+  const button = $("remove-marks");
+  if (!button) return;
+  let holdTimer = null, held = false, start = null;
+  const cancel = () => { clearTimeout(holdTimer); holdTimer = null; button.classList.remove("is-holding"); };
+  const begin = () => {
+    if (button.disabled) return;
+    cancel(); held = false;
+    button.classList.add("is-holding");
+    holdTimer = setTimeout(() => { held = true; cancel(); removeMarks(true); }, 700);
+  };
+  button.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    start = { x: event.clientX, y: event.clientY };
+    button.setPointerCapture(event.pointerId);
+    begin();
+  });
+  button.addEventListener("pointermove", event => {
+    if (holdTimer && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) { cancel(); held = true; }
+  });
+  button.addEventListener("pointerup", cancel);
+  button.addEventListener("pointercancel", () => { cancel(); held = true; });
+  button.addEventListener("lostpointercapture", cancel);
+  button.addEventListener("blur", cancel);
+  button.addEventListener("contextmenu", event => event.preventDefault());
+  button.addEventListener("click", event => {
+    event.preventDefault();
+    if (!held) removeMarks(false);
+  });
+  button.addEventListener("keydown", event => {
+    if (!["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    if (!event.repeat) begin();
+  });
+  button.addEventListener("keyup", event => {
+    if (!["Enter", " "].includes(event.key)) return;
+    event.preventDefault(); cancel();
+    if (!held) removeMarks(false);
+  });
+}
+async function removeMarks(all = false) {
+  if (!session?.can_remove_marks || applying) return;
+  clearTimeout(timer); pending = false; draftSeq++; draftActive = false;
+  applying = true; updateApply();
+  try {
+    while (running) await running;
+    const result = await api(endpoint("remove-strokes"), { method: "POST", body: { revision: session.revision, all } });
+    await acceptApplied(result, draftSeq, { reset: true });
+    status(all ? "已移除当前全部连续笔迹" : "已移除上一笔");
+  } catch (e) { error(e.message); }
+  finally { applying = false; updateApply(); showCurrent(); }
+}
 async function travel(redo = false) {
   if (!session || applying || !(redo ? session.can_redo : session.can_undo))
     return;
@@ -736,7 +1033,7 @@ async function travel(redo = false) {
     settings.rotate.angle = 0;
     settings.rotate.flip = null;
     await acceptApplied(result, draftSeq, { fit: true, reset: true });
-    toast(redo ? "已重做" : "已撤销");
+    status(redo ? "已重做" : "已撤销");
   } catch (e) {
     error(e.message);
   } finally {
@@ -747,34 +1044,40 @@ async function travel(redo = false) {
 }
 async function selectTool(name) {
   if (!boot || applying) return;
+  if (name !== "rotate") rotationPreviewing = false;
   clearTimeout(timer);
   draftSeq++;
   pending = false;
   preview = null;
   if (tool === "rotate" && name !== tool)
-    settings.rotate = { angle: 0, flip: null, expand: settings.rotate.expand };
+    settings.rotate = { angle: 0, flip: null, expand: true };
   tool = name;
+  if (tool === "filters") syncFilterSelection();
+  if (tool === "enhance" && session) settings.enhance = { ...session.enhancement };
   gesture = uid();
   canvas.setTool(tool);
   canvas.localImage = null;
   document.querySelectorAll(".tool-button").forEach((el) => {
-    el.classList.toggle("active", el.dataset.tool === tool);
-    el.setAttribute("aria-pressed", el.dataset.tool === tool);
+    el.classList.toggle("active", el.dataset.tool === (tool === "rotate" ? "crop" : tool));
+    el.setAttribute("aria-pressed", el.dataset.tool === (tool === "rotate" ? "crop" : tool));
   });
   panel();
   if (!session) return;
-  draftActive = !["brush", "mosaic", "blur", "enhance"].includes(tool);
+  draftActive = !["brush", "mosaic", "blur", "enhance", "filters"].includes(tool);
   await canvas.setImage(session.image_url, [
     session.current.width,
     session.current.height,
   ]);
-  if (tool === "crop") resetCrop();
-  else canvas.crop = null;
+  if (tool === "crop") {
+    const retained = cropFrame?.key === cropFrameKey() ? cropFrame.rect : null;
+    resetCrop();
+    if (retained) { canvas.crop = { ...retained }; canvas.emitCrop(); canvas.draw(); }
+  } else canvas.crop = null;
   if (["brush", "mosaic", "blur"].includes(tool))
     canvas.brush = { ...settings[tool] };
   if (draftActive) schedule();
   else showAppliedPreview();
-  status(`${TOOLS.find((t) => t[0] === tool)[1]} · 当前服务处理`);
+  status(`${TOOLS.find((t) => t[0] === (tool === "rotate" ? "crop" : tool))[1]} · 当前服务处理`);
   updateApply();
 }
 async function openImage(file, demo = false) {
@@ -813,7 +1116,9 @@ async function openImage(file, demo = false) {
         () => {},
       );
     settings.enhance = { ...session.enhancement };
+    syncFilterSelection();
     settings.compress = { ...settings.compress, ...session.compression };
+    filterThumbnail = { key: "", src: "" };
     $("welcome").hidden = true;
     $("editor-canvas").hidden = false;
     canvas.crop = null;
@@ -833,22 +1138,58 @@ async function openImage(file, demo = false) {
     $("file-input").value = "";
   }
 }
+async function savedImage() {
+  const result = await fetch(endpoint("download"));
+  if (!result.ok) throw new Error("保存失败，请重试。");
+  return {
+    blob: await result.blob(),
+    name: decodeURIComponent((result.headers.get("Content-Disposition") || "").match(/filename\*=UTF-8''(.+)/)?.[1] || "photocraft.png"),
+    revision: Number(result.headers.get("X-PhotoCraft-Revision")),
+  };
+}
 async function save() {
   if (!session) return;
   try {
-    const result = await fetch(endpoint("download"));
-    if (!result.ok) throw new Error("保存失败，请重试。");
-    const blob = await result.blob();
-    const header = result.headers.get("Content-Disposition") || "";
-    const name = decodeURIComponent(
-      header.match(/filename\*=UTF-8''(.+)/)?.[1] || "photocraft.png",
-    );
-    download(blob, name);
-    savedRevision = Number(result.headers.get("X-PhotoCraft-Revision"));
-    toast("已下载当前结果，未应用的预览不会保存");
-  } catch (e) {
-    error(e.message);
+    const image = await savedImage();
+    download(image.blob, image.name);
+    savedRevision = image.revision;
+    status("已下载当前结果，未应用的预览不会保存");
+  } catch (e) { error(e.message); }
+}
+function suggestedName() {
+  const ext = {JPEG:"jpg", PNG:"png", WEBP:"webp", BMP:"bmp", TIFF:"tiff"}[session.current.format] || "png";
+  return session.name.replace(/\.[^.]+$/, "") + "-edited." + ext;
+}
+async function saveAs() {
+  if (!session) return;
+  if (!window.showSaveFilePicker) {
+    $("save-as-name").value = suggestedName();
+    $("save-as-dialog").showModal();
+    $("save-as-name").select();
+    return;
   }
+  try {
+    const handle = await window.showSaveFilePicker({suggestedName: suggestedName()});
+    const image = await savedImage();
+    const writable = await handle.createWritable();
+    await writable.write(image.blob);
+    await writable.close();
+    savedRevision = image.revision;
+    status("已另存当前结果");
+  } catch (e) { if (e.name !== "AbortError") error(e.message); }
+}
+async function copyImage() {
+  if (!session) return;
+  try {
+    if (!navigator.clipboard?.write || !window.ClipboardItem)
+      throw new Error("此浏览器暂不支持复制图片，请使用 HTTPS 或本机地址访问，或选择保存图片。");
+    const png = fetch(endpoint("clipboard")).then(async response => {
+      if (!response.ok) throw new Error("复制失败，请重试。");
+      return response.blob();
+    });
+    await navigator.clipboard.write([new ClipboardItem({"image/png": png})]);
+    status("已复制当前图片，未应用的预览不会复制");
+  } catch (e) { error(e.message); }
 }
 function download(blob, name) {
   const link = document.createElement("a");
@@ -870,18 +1211,46 @@ document
     b.addEventListener("click", () => selectTool(b.dataset.tool)),
   );
 hydrate();
+if (/Mac|iPhone|iPad/.test(navigator.platform)) $("save-as-shortcut").textContent = "⌘+Shift+S";
 $("choose-image").addEventListener("click", () => $("file-input").click());
 $("file-input").addEventListener("change", (e) => {
   if (e.target.files[0]) openImage(e.target.files[0]);
 });
 $("demo-button").addEventListener("click", () => openImage(null, true));
-$("save-button").addEventListener("click", save);
+$("save-menu").addEventListener("beforetoggle", e => {
+  if (e.newState !== "open") return;
+  const rect = $("save-button").getBoundingClientRect();
+  $("save-menu").style.left = `${Math.max(8, Math.min(rect.right - 220, innerWidth - 228))}px`;
+  $("save-menu").style.top = `${rect.bottom + 6}px`;
+});
+for (const [id, action] of [["save-default", save], ["save-as", saveAs], ["copy-image", copyImage]]) {
+  $(id).addEventListener("click", () => { $("save-menu").hidePopover(); action(); });
+}
+$("save-as-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const chosen = $("save-as-name").value.trim().replace(/[\\/]/g, "_");
+  if (!chosen) return;
+  try {
+    const image = await savedImage();
+    const ext = image.name.split(".").pop();
+    download(image.blob, chosen.toLowerCase().endsWith("." + ext) ? chosen : chosen + "." + ext);
+    savedRevision = image.revision;
+    $("save-as-dialog").close();
+    status("已另存当前结果");
+  } catch (err) { error(err.message); }
+});
 $("help-button").addEventListener("click", () => $("help-dialog").showModal());
 $("apply-button").addEventListener("click", applyCurrent);
 $("undo-button").addEventListener("click", () => travel());
 $("redo-button").addEventListener("click", () => travel(true));
-$("fit-button").addEventListener("click", () => canvas.fit());
-$("actual-button").addEventListener("click", () => canvas.actual());
+$("view-size-menu").addEventListener("beforetoggle", e => {
+  if (e.newState !== "open") return;
+  const rect = $("view-size-button").getBoundingClientRect();
+  $("view-size-menu").style.left = `${Math.max(8, Math.min(rect.left, innerWidth - 228))}px`;
+  $("view-size-menu").style.top = `${rect.bottom + 6}px`;
+});
+$("fit-button").addEventListener("click", () => { $("view-size-menu").hidePopover(); canvas.fit(); });
+$("actual-button").addEventListener("click", () => { $("view-size-menu").hidePopover(); canvas.actual(); });
 $("pan-button").addEventListener("click", () => {
   canvas.pan = !canvas.pan;
   $("pan-button").classList.toggle("active", canvas.pan);
@@ -900,14 +1269,12 @@ $("compare-button").addEventListener("pointerdown", (e) => {
       session.original.height,
     ])
     .catch(error);
-  $("preview-info").textContent = info(session.original);
-  $("preview-badge").textContent = "原图";
+  showInfo("preview-info", session.original);
 });
 function endCompare() {
   canvas.endCompare();
   if (preview) {
-    $("preview-info").textContent = info(preview.info);
-    $("preview-badge").textContent = "未应用";
+    showInfo("preview-info", preview.info);
   } else showAppliedPreview();
 }
 for (const event of ["pointerup", "pointercancel", "lostpointercapture"])
@@ -967,7 +1334,11 @@ document.addEventListener("keydown", (e) => {
     $("file-input").click();
   } else if (key === "s") {
     e.preventDefault();
-    if (!document.querySelector("dialog[open]")) save();
+    if (!e.repeat && !document.querySelector("dialog[open]")) {
+      $("save-menu").hidePopover();
+      if (e.shiftKey) saveAs();
+      else save();
+    }
   } else if (key === "z" && !input && !document.querySelector("dialog[open]")) {
     e.preventDefault();
     travel(e.shiftKey);

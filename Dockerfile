@@ -1,14 +1,13 @@
-FROM python:3.12-slim-bookworm
+ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim-bookworm
+FROM ${BASE_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONUTF8=1 \
     PHOTOCRAFT_CONFIG_DIR=/data
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      fontconfig fonts-dejavu-core fonts-noto-cjk \
-    && rm -rf /var/lib/apt/lists/*
 COPY requirements-lock.txt ./
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 RUN python -m pip install --no-cache-dir -r requirements-lock.txt
 COPY pyproject.toml setup.py README.md LICENSE THIRD_PARTY_NOTICES.md ./
 COPY photocraft ./photocraft

@@ -8,10 +8,6 @@ from PySide6.QtGui import QColor, QFont, QFontDatabase, QFontMetricsF, QImage, Q
 
 
 def default_font_family():
-    families = set(QFontDatabase.families())
-    for family in ("Noto Sans CJK SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC"):
-        if family in families:
-            return family
     return QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont).family()
 
 

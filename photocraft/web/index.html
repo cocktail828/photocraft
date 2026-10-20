@@ -49,9 +49,14 @@
           aria-label="切换主题"
           data-icon="sun"
         ></button
-        ><button id="save-button" class="primary save-button" disabled>
-          <span data-icon="download"></span>保存图片
+        ><button id="save-button" class="primary save-button" popovertarget="save-menu" aria-haspopup="true" disabled>
+          <span data-icon="download"></span>保存图片<span class="save-chevron">▾</span>
         </button>
+        <div id="save-menu" class="save-menu" popover="auto">
+          <button id="save-default" type="button">保存图片 <small>默认 · Ctrl+S</small></button>
+          <button id="save-as" type="button" aria-keyshortcuts="Control+Shift+S Meta+Shift+S">另存为 <small id="save-as-shortcut">Ctrl+Shift+S</small></button>
+          <button id="copy-image" type="button">复制到剪贴板</button>
+        </div>
       </div>
     </header>
     <div class="app-body">
@@ -68,6 +73,30 @@
             <span data-icon="image"></span><span id="filename">未打开图片</span>
           </div>
           <div class="workspace-actions">
+        <div class="view-controls" role="group" aria-label="图片视图">
+          <div>
+            <button
+              id="pan-button"
+              class="icon-button"
+              title="平移 · 按住空格"
+              aria-label="平移"
+              data-icon="hand"
+            ></button
+><button id="view-size-button" class="quiet" type="button" popovertarget="view-size-menu" aria-haspopup="true" title="图片显示大小"><span id="view-size-value">适应窗口</span> <span aria-hidden="true">▾</span></button>
+            <div id="view-size-menu" class="save-menu" popover="auto" aria-label="图片显示大小">
+              <button id="fit-button" type="button" title="适应窗口 · Ctrl+0">适应窗口 <small>Ctrl+0</small></button>
+              <button id="actual-button" type="button" title="实际大小">实际大小 <small>1:1</small></button>
+            </div>
+          </div>
+          <div>
+            <button id="compare-button" class="quiet" disabled>
+              <span data-icon="compare"></span>按住查看原图</button
+            ><label class="checker-toggle" title="用棋盘格显示透明区域，仅影响预览，不会保存到图片"
+              ><input type="checkbox" id="checker" checked />透明网格</label
+            >
+          </div>
+        </div>
+            <span class="toolbar-separator"></span>
             <button
               id="undo-button"
               class="icon-button"
@@ -124,58 +153,44 @@
             <span data-icon="upload"></span>松开以打开图片
           </div>
         </div>
-        <div class="canvas-controls">
-          <div>
-            <button
-              id="pan-button"
-              class="icon-button"
-              title="平移 · 按住空格"
-              aria-label="平移"
-              data-icon="hand"
-            ></button
-            ><button
-              id="fit-button"
-              class="icon-button"
-              title="适应窗口 · Ctrl+0"
-              aria-label="适应窗口"
-              data-icon="fit"
-            ></button
-            ><button id="actual-button" class="quiet">1:1</button
-            ><span id="zoom">—</span>
+        <section id="geometry-controls" class="geometry-controls" aria-label="旋转与翻转" hidden>
+          <div class="straighten-control">
+            <div class="angle-ruler">
+              <div class="angle-ticks" aria-hidden="true"></div>
+              <input id="straighten-angle" type="range" min="-180" max="180" step="0.1" value="0" aria-label="旋转角度" aria-describedby="straighten-hint">
+              <div class="angle-labels" aria-hidden="true"><span>−180°</span><span>−120°</span><span>−60°</span><span>0°</span><span>60°</span><span>120°</span><span>180°</span></div>
+            </div>
           </div>
-          <div>
-            <button id="compare-button" class="quiet" disabled>
-              <span data-icon="compare"></span>按住查看原图</button
-            ><label class="checker-toggle"
-              ><input type="checkbox" id="checker" checked />透明网格</label
-            >
+          <div class="geometry-bottom-row">
+            <div class="geometry-action-group" aria-label="旋转照片">
+              <button id="rotate-left" type="button" title="向左旋转 90°" aria-label="向左旋转 90°"><span data-icon="rotate-left"></span><span>左旋</span></button>
+              <button id="rotate-right" type="button" title="向右旋转 90°" aria-label="向右旋转 90°"><span data-icon="rotate-right"></span><span>右旋</span></button>
+            </div>
+            <section id="crop-controls" class="crop-controls" aria-label="裁剪参数" hidden></section>
+            <div class="geometry-action-group" aria-label="翻转照片">
+              <button id="flip-vertical" type="button" aria-pressed="false" title="上下翻转"><span data-icon="flip-vertical"></span><span>上下翻转</span></button>
+              <button id="flip-horizontal" type="button" aria-pressed="false" title="左右翻转"><span data-icon="flip-horizontal"></span><span>左右翻转</span></button>
+            </div>
           </div>
-        </div>
-        <footer class="image-info">
-          <section>
-            <div class="info-title">
-              预览<span id="preview-badge">未打开图片</span>
-            </div>
-            <div id="preview-info" class="info-content">
-              打开图片后查看尺寸和编码信息
-            </div>
-          </section>
-          <section>
-            <div class="info-title">当前<span>保存使用此结果</span></div>
-            <div id="current-info" class="info-content">
-              只有已应用的操作会进入保存结果
-            </div>
-          </section>
-        </footer>
+        </section>
+        <p id="straighten-hint" hidden>旋转后自动保留完整画面</p>
+        <section id="effect-controls" class="effect-controls" aria-label="图像调整参数" hidden></section>
+        <section id="stroke-controls" class="stroke-controls" aria-label="画笔参数" hidden></section>
+
       </main>
       <aside class="properties" id="properties" aria-label="功能设置"></aside>
     </div>
-    <div class="statusbar">
+    <footer class="statusbar">
       <span
         ><span id="busy-dot" class="status-dot"></span
-        ><span id="status">正在连接服务…</span></span
-      ><span>图片不会发送至第三方服务</span>
-    </div>
+        ><span id="status" role="status" aria-live="polite" aria-atomic="true">正在连接服务…</span></span
+      >
+      <div class="image-info" aria-label="图片预览信息">
+        <div class="info-content">
+          <span id="preview-info">打开图片后查看尺寸和编码信息</span><span class="info-divider" aria-hidden="true"> · </span><span id="zoom" title="当前图片缩放比例" aria-label="当前缩放比例">—</span>
+        </div>
+      </div>
+    </footer>
     <input
       id="file-input"
       type="file"
@@ -246,6 +261,10 @@
           data-icon="close"
         ></button>
       </div>
+      <aside class="help-highlight" aria-label="背景替换提示">
+        <strong>需要背景替换？可以使用微软照片</strong>
+        <p>在 Windows 的「照片」应用中打开图片，进入编辑，使用背景功能移除背景或替换为其他颜色，保存后可回到 PhotoCraft 继续编辑。</p>
+      </aside>
       <section class="help-section" aria-labelledby="help-start">
         <h3 id="help-start">开始编辑</h3>
         <ol>
@@ -254,10 +273,10 @@
             JPG、PNG、WEBP、BMP、TIFF。
           </li>
           <li>
-            从左侧选择工具，调整右侧参数。裁剪、背景色、旋转、水印和压缩先预览，点击上方「应用」后生效；增强调整即应用，画笔、马赛克和局部模糊松开后即应用。
+            从左侧选择工具，在照片下方展开参数；压缩使用右侧设置。裁剪、旋转、图像增强模板、水印和压缩先预览，点击上方「应用」后生效；「调整」中的滑块调整即应用，画笔、马赛克和局部模糊松开后即应用。
           </li>
           <li>
-            底部「预览」显示正在查看的效果，「当前」显示已应用的结果。点击「保存图片」下载当前结果，未应用的预览不会保存。
+            页脚显示正在查看的图片尺寸、体积和编码信息。照片下方提供带刻度的旋转条及旋转、翻转按钮，每次调整确认后点击「应用」。点击「保存图片」下载已应用的结果，未应用的预览不会保存。
           </li>
         </ol>
       </section>
@@ -268,7 +287,7 @@
             裁剪时拖动取景框调整位置；自由裁剪可拖动边角或输入像素。模板默认按指定像素裁剪，像素不足时需勾选「允许缩放」；放大可能模糊，缩小会损失细节。
           </li>
           <li>
-            背景色只填充透明区域，不会自动抠图。不透明照片可先用画笔中的橡皮擦擦除背景。
+            照片下方拖动刻度条可拉直照片；左下方左旋或右旋，右下方上下或左右翻转。旋转自动扩大画布以保留完整画面。
           </li>
           <li>
             水印整页重复平铺，默认替换已有水印；勾选「允许多重水印」后可叠加。图像压缩只调整编码格式和画质，保持当前像素尺寸。
@@ -334,6 +353,15 @@
         <button type="button" class="primary dialog-close">知道了</button>
       </div>
     </dialog>
+    <dialog id="save-as-dialog">
+      <form id="save-as-form">
+        <div class="dialog-header"><h2>另存为</h2><button type="button" class="icon-button dialog-close" aria-label="关闭" data-icon="close"></button></div>
+        <label for="save-as-name">文件名</label>
+        <input id="save-as-name" required autocomplete="off">
+        <p>保持当前图片格式，保存已应用的编辑结果。</p>
+        <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">保存</button></div>
+      </form>
+    </dialog>
     <dialog id="error-dialog">
       <div class="dialog-header">
         <h2>暂时无法完成</h2>
@@ -348,6 +376,5 @@
         <button class="primary dialog-close">知道了</button>
       </div>
     </dialog>
-    <div id="toast" role="status" hidden></div>
   </body>
 </html>

@@ -54,6 +54,7 @@ class Entry:
     warning: str = ""
     changed: bool = True
     thumbnail: bytes | None = None
+    stroke_origin: "Entry | None" = field(default=None, repr=False)
 
     def info(self):
         return dict(
@@ -66,6 +67,16 @@ class Entry:
             losses=list(self.encoded.loss_reasons),
             original=self.encoded.strategy == "原文件编码",
         )
+
+    def clipboard(self):
+        # Decode the saved result at full size, including its actual compression and alpha.
+        from PIL import ImageOps
+
+        with RENDER_SLOTS, Image.open(BytesIO(self.encoded.data)) as source:
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+            output = BytesIO()
+            image.save(output, "PNG", compress_level=3)
+            return output.getvalue()
 
     def image(self):
         if self.thumbnail is None:
@@ -145,6 +156,7 @@ class Editor:
             original_url=f"/api/sessions/{self.id}/original",
             can_undo=bool(self.history),
             can_redo=bool(self.future),
+            can_remove_marks=entry.tool in ("brush", "mosaic", "blur") and bool(self.history or entry.stroke_origin),
             dirty=entry is not self.source,
             enhancement=vars(entry.state.enhancement),
             compression=vars(self.options(entry.state)),
@@ -193,16 +205,6 @@ class Editor:
             if p.angle == 0 and p.flip is None:
                 return replace(self.current, changed=False, tool=tool)
             state.base, state.marks = transform_pixels(state.base, state.marks, p.angle, p.flip, p.expand)
-        elif tool == "background":
-            if state.base.getchannel("A").getextrema()[0] == 255:
-                return replace(
-                    self.current,
-                    changed=False,
-                    tool=tool,
-                    warning="图片不含透明区域，填充不会改变画面。可先用橡皮擦擦除背景。",
-                )
-            state.base = Image.new("RGBA", old.base.size, p.color)
-            state.base.alpha_composite(old.base)
         elif tool in ("brush", "mosaic", "blur"):
             state.base = paint_stroke(
                 old.base,
@@ -266,6 +268,8 @@ class Editor:
                 if not coalesce:
                     self.history.append(self.current)
                 self.future.clear()
+                if entry.tool in ("brush", "mosaic", "blur"):
+                    entry.stroke_origin = self.current.stroke_origin or self.current
                 self.current = entry
                 self.revision += 1
                 self.applied = (self.current, self.revision)
@@ -279,13 +283,43 @@ class Editor:
         while len(self.history) > 1:
             images = {}
             total = 0
-            for entry in [*self.history, self.current]:
+            entries = [*self.history, self.current]
+            if self.current.stroke_origin is not None and all(self.current.stroke_origin is not item for item in entries):
+                entries.append(self.current.stroke_origin)
+            for entry in entries:
                 for image in (entry.state.base, entry.rendered):
                     images[id(image)] = image.width * image.height * 4
                 total += len(entry.encoded.data)
             if sum(images.values()) + total <= limit and len(self.history) <= 20:
                 break
             self.history.pop(0)
+
+    def remove_strokes(self, revision, *, all_strokes=False):
+        """Undo the trailing stroke group without stepping across other edits."""
+        with self.lock:
+            self.check_revision(revision)
+            if self.current.tool not in ("brush", "mosaic", "blur"):
+                return self.describe()
+            if not all_strokes:
+                if not self.history:
+                    raise Conflict("上一笔已超出撤销记录，请长按移除当前全部笔迹。")
+                return self.travel(revision)
+            origin = self.current.stroke_origin
+            if origin is None:
+                return self.describe()
+            self.future.append(self.current)
+            while self.history and self.history[-1] is not origin:
+                if self.history[-1].tool not in ("brush", "mosaic", "blur"):
+                    break
+                self.future.append(self.history.pop())
+            if self.history and self.history[-1] is origin:
+                self.history.pop()
+            self.current = origin
+            self.revision += 1
+            self.applied = (self.current, self.revision)
+            self.last_gesture = ""
+            self.previews.clear()
+            return self.describe()
 
     def travel(self, revision, redo=False):
         with self.lock:

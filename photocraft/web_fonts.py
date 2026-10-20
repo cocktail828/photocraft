@@ -1,4 +1,4 @@
-"""Discover and render service-side fonts using Pillow, including container CJK fonts."""
+"""Discover and render service-side fonts using Pillow, without requiring a specific family."""
 
 import hashlib
 import os
@@ -7,6 +7,22 @@ from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+
+def system_font_dirs():
+    """Search system and user font locations across supported operating systems."""
+    home = Path.home()
+    return (
+        Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts",
+        Path(os.environ.get("LOCALAPPDATA", str(home / "AppData/Local"))) / "Microsoft/Windows/Fonts",
+        Path("/System/Library/Fonts"),
+        Path("/Library/Fonts"),
+        home / "Library/Fonts",
+        Path("/usr/share/fonts"),
+        Path("/usr/local/share/fonts"),
+        home / ".fonts",
+        Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "fonts",
+    )
 
 
 @lru_cache(maxsize=1)
@@ -29,7 +45,7 @@ def fonts():
             key = hashlib.sha256(f"{filename}:{index}".encode()).hexdigest()[:16]
             records[key] = dict(id=key, name=family, path=filename, index=index)
     except (OSError, ValueError, subprocess.SubprocessError):
-        for root in (Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts", Path("/usr/share/fonts")):
+        for root in system_font_dirs():
             if root.is_dir():
                 for file in sorted(root.rglob("*")):
                     if file.suffix.lower() not in (".ttf", ".ttc", ".otf"):
@@ -40,13 +56,7 @@ def fonts():
                         continue
                     key = hashlib.sha256(str(file).encode()).hexdigest()[:16]
                     records[key] = dict(id=key, name=family, path=str(file), index=0)
-    return sorted(
-        records.values(),
-        key=lambda f: (
-            not any(name in f["name"] for name in ("Noto Sans CJK SC", "Microsoft YaHei")),
-            f["name"],
-        ),
-    )
+    return sorted(records.values(), key=lambda f: (f["name"].casefold(), f["path"], f["index"]))
 
 
 def text_bitmap(text, font_id, size, color):

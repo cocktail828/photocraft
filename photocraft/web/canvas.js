@@ -258,8 +258,9 @@ export class EditorCanvas {
         d.points.length < 5000
       ) {
         d.points.push([s.x, s.y]);
-        this.paintLocal();
       }
+      this.scheduleStroke();
+      return;
     }
     if (d.type === "crop") {
       const r = d.rect,
@@ -307,6 +308,11 @@ export class EditorCanvas {
   }
   up(e) {
     const d = this.drag;
+    if (d?.type === "stroke") {
+      cancelAnimationFrame(this.strokeFrame);
+      this.strokeFrame = null;
+      this.paintLocal();
+    }
     this.drag = null;
     if (this.el.hasPointerCapture(e.pointerId))
       this.el.releasePointerCapture(e.pointerId);
@@ -314,74 +320,86 @@ export class EditorCanvas {
       this.callbacks.stroke({ points: d.points, ...d.brush });
     this.draw();
   }
+  scheduleStroke() {
+    if (this.strokeFrame) return;
+    this.strokeFrame = requestAnimationFrame(() => {
+      this.strokeFrame = null;
+      if (this.drag?.type !== "stroke") return;
+      this.paintLocal();
+      this.draw();
+    });
+  }
   paintLocal() {
-    const d = this.drag,
-      scale = this.image.naturalWidth / this.width;
+    const d = this.drag;
+    if (!d || d.painted === d.points.length) return;
+    const scale = this.image.naturalWidth / this.width;
     const make = () => {
       const c = document.createElement("canvas");
       c.width = this.image.naturalWidth;
       c.height = this.image.naturalHeight;
       return c;
     };
-    const canvas = make(),
-      ctx = canvas.getContext("2d");
-    ctx.drawImage(this.image, 0, 0);
-    const trace = (c) => {
-      c.beginPath();
-      c.lineWidth = d.brush.size * scale;
-      c.lineCap = "round";
-      c.lineJoin = "round";
-      d.points.forEach(([x, y], i) =>
-        i ? c.lineTo(x * scale, y * scale) : c.moveTo(x * scale, y * scale),
-      );
-      if (d.points.length === 1) {
-        const [x, y] = d.points[0];
-        c.arc(x * scale, y * scale, (d.brush.size * scale) / 2, 0, Math.PI * 2);
-        c.fill();
-      } else c.stroke();
-    };
+    if (!d.surface) {
+      d.surface = make();
+      d.surface.getContext("2d").drawImage(this.image, 0, 0);
+      d.mask = make();
+      d.overlay = make();
+      d.painted = 0;
+    }
+    const points = d.points.slice(Math.max(0, d.painted - 1));
+    const pad = d.brush.size * scale / 2 + 2;
+    const xs = points.map(([x]) => x * scale), ys = points.map(([, y]) => y * scale);
+    const x = Math.max(0, Math.floor(Math.min(...xs) - pad));
+    const y = Math.max(0, Math.floor(Math.min(...ys) - pad));
+    const w = Math.min(d.surface.width, Math.ceil(Math.max(...xs) + pad)) - x;
+    const h = Math.min(d.surface.height, Math.ceil(Math.max(...ys) + pad)) - y;
+    const mc = d.mask.getContext("2d");
+    mc.strokeStyle = mc.fillStyle = "#fff";
+    mc.lineWidth = d.brush.size * scale;
+    mc.lineCap = mc.lineJoin = "round";
+    mc.beginPath();
+    points.forEach(([px, py], i) => i ? mc.lineTo(px * scale, py * scale) : mc.moveTo(px * scale, py * scale));
+    if (points.length === 1) {
+      mc.arc(xs[0], ys[0], d.brush.size * scale / 2, 0, Math.PI * 2);
+      mc.fill();
+    } else mc.stroke();
+    d.painted = d.points.length;
+    if (w <= 0 || h <= 0) return;
+    const oc = d.overlay.getContext("2d"), ctx = d.surface.getContext("2d");
+    oc.globalCompositeOperation = "source-over";
+    oc.clearRect(x, y, w, h);
     if (this.tool === "brush") {
-      if (d.brush.erase) ctx.globalCompositeOperation = "destination-out";
-      ctx.globalAlpha = d.brush.opacity;
-      ctx.strokeStyle = ctx.fillStyle = d.brush.color;
-      trace(ctx);
+      oc.fillStyle = d.brush.color;
+      oc.fillRect(x, y, w, h);
     } else {
-      const effect = make(),
-        ec = effect.getContext("2d");
       const key = `${this.tool}:${d.brush.block}`;
-      if (
-        this.effectCache?.image === this.image &&
-        this.effectCache.key === key
-      ) {
-        ec.drawImage(this.effectCache.canvas, 0, 0);
-      } else {
+      if (this.effectCache?.image !== this.image || this.effectCache.key !== key) {
+        const effect = make(), ec = effect.getContext("2d");
         if (this.tool === "blur") {
           ec.drawImage(this.image, 0, 0);
-          blurThumbnail(effect, (d.brush.block * scale) / 2);
+          blurThumbnail(effect, d.brush.block * scale / 2);
         } else {
           const small = document.createElement("canvas");
           small.width = Math.max(1, Math.ceil(this.width / d.brush.block));
           small.height = Math.max(1, Math.ceil(this.height / d.brush.block));
-          small
-            .getContext("2d")
-            .drawImage(this.image, 0, 0, small.width, small.height);
+          small.getContext("2d").drawImage(this.image, 0, 0, small.width, small.height);
           ec.imageSmoothingEnabled = false;
-          ec.drawImage(small, 0, 0, effect.width, effect.height);
+          ec.drawImage(small, 0, 0, small.width * d.brush.block * scale, small.height * d.brush.block * scale);
         }
-        const cached = make();
-        cached.getContext("2d").drawImage(effect, 0, 0);
-        this.effectCache = { image: this.image, key, canvas: cached };
+        this.effectCache = { image: this.image, key, canvas: effect };
       }
-      const mask = make(),
-        mc = mask.getContext("2d");
-      mc.strokeStyle = mc.fillStyle = "#fff";
-      trace(mc);
-      ec.globalCompositeOperation = "destination-in";
-      ec.drawImage(mask, 0, 0);
-      ctx.globalAlpha = d.brush.opacity;
-      ctx.drawImage(effect, 0, 0);
+      oc.drawImage(this.effectCache.canvas, x, y, w, h, x, y, w, h);
     }
-    this.localImage = canvas;
+    oc.globalCompositeOperation = "destination-in";
+    oc.drawImage(d.mask, x, y, w, h, x, y, w, h);
+    ctx.clearRect(x, y, w, h);
+    ctx.drawImage(this.image, x, y, w, h, x, y, w, h);
+    ctx.globalCompositeOperation = this.tool === "brush" && d.brush.erase ? "destination-out" : "source-over";
+    ctx.globalAlpha = d.brush.opacity;
+    ctx.drawImage(d.overlay, x, y, w, h, x, y, w, h);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    this.localImage = d.surface;
   }
   draw() {
     const r = this.el.getBoundingClientRect();
