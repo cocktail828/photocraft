@@ -4,13 +4,21 @@
 
 ## 构建
 
-默认使用华为云镜像仓库的 Python 基础镜像，Python 软件包使用清华 PyPI 镜像。可通过构建参数 `BASE_IMAGE` 和 `PIP_INDEX_URL` 覆盖；镜像不安装指定字体包，也不需要 apt 下载步骤。
+默认使用 Docker Hub 官方 Python 基础镜像和官方 PyPI，GitHub CI 与 release 均使用这些默认源。可通过构建参数 `BASE_IMAGE` 和 `PIP_INDEX_URL` 覆盖；镜像不安装指定字体包，也不需要 apt 下载步骤。
 
 ```bash
 python scripts/build_image.py --tag photocraft:local
 ```
 
 脚本自动读取 Git commit、tag 和 dirty 状态，通过 build arguments 写入镜像。镜像不包含 `.git`。服务的版本文字与 Python 包版本都来自这份构建记录。
+
+本地需要国内镜像时，显式传入覆盖参数：
+
+```bash
+python scripts/build_image.py --tag photocraft:local \
+  --base-image swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim-bookworm \
+  --pip-index-url https://pypi.tuna.tsinghua.edu.cn/simple
+```
 
 也可以直接构建：
 

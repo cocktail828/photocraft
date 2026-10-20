@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.12-slim-bookworm
+ARG BASE_IMAGE=python:3.12-slim-bookworm
 FROM ${BASE_IMAGE}
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -7,8 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PHOTOCRAFT_CONFIG_DIR=/data
 WORKDIR /app
 COPY requirements-lock.txt ./
-ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-RUN python -m pip install --no-cache-dir -r requirements-lock.txt
+ARG PIP_INDEX_URL=https://pypi.org/simple
+# Install the build backend in the cached dependency layer as well.
+RUN python -m pip install --no-cache-dir -r requirements-lock.txt "setuptools>=75" wheel
 COPY pyproject.toml setup.py README.md LICENSE THIRD_PARTY_NOTICES.md ./
 COPY photocraft ./photocraft
 COPY scripts/write_build_info.py ./scripts/write_build_info.py
@@ -17,7 +18,7 @@ ARG VERSION_TAG=""
 ARG VCS_COUNT="0"
 ARG VCS_DIRTY="0"
 RUN python scripts/write_build_info.py \
-    && python -m pip install --no-cache-dir --no-deps . \
+    && python -m pip install --no-cache-dir --no-deps --no-build-isolation . \
     && groupadd --gid 10001 photocraft \
     && useradd --uid 10001 --gid photocraft --no-create-home photocraft \
     && mkdir -p /data && chown photocraft:photocraft /data

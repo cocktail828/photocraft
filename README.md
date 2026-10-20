@@ -24,7 +24,7 @@ docker compose down
 
 Compose 启动时会将宿主机字体目录只读挂载到容器，默认目录为 `/usr/share/fonts`。如果该目录不存在，请先在项目 `.env` 中设置 `PHOTOCRAFT_FONTS_DIR` 为本机已有的字体目录，例如 macOS 的 `/System/Library/Fonts` 或 Windows 的 `C:/Windows/Fonts`。不要求安装特定字体，水印可用字符取决于所选系统字体。
 
-镜像默认使用华为云基础镜像源和清华 PyPI 镜像，首次构建需要联网下载依赖。
+镜像默认使用 Docker Hub 官方 Python 基础镜像和官方 PyPI，首次构建需要联网下载依赖。本地需要国内镜像时，可按[部署说明](docs/RELEASING.md)显式覆盖构建参数。
 
 配置保存在命名卷 `photocraft-config`，正常停止或重建不会清除。照片、预览和撤销记录仅保留在服务内存中；刷新页面或重启服务后，需要重新打开图片。
 
