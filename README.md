@@ -79,7 +79,7 @@ JPEG / WEBP 的画质会影响文件体积与细节，质量 100 仍然使用有
 
 预览显示图最长边限制为 1600 px，下载仍使用完整分辨率。连续调整会合并请求，过期预览不会覆盖新状态；应用时复用有效预览的完整结果。每张照片拥有独立会话，不同浏览器页面的图像和撤销记录互不混用。
 
-更多界面：[欢迎页](docs/screenshots/web/welcome.png) · [裁剪](docs/screenshots/web/crop.png) · [文字水印](docs/screenshots/web/watermark.png) · [深色主题](docs/screenshots/web/dark.png) · [手机布局](docs/screenshots/web/mobile.png) · [颜色面板](docs/screenshots/web/colors.png)。
+更多界面：[欢迎页](docs/screenshots/web/welcome.png) · [裁剪](docs/screenshots/web/crop.png) · [文字水印](docs/screenshots/web/watermark.png) · [深色主题](docs/screenshots/web/dark.png) · [手机布局](docs/screenshots/web/mobile.png) · [水印颜色](docs/screenshots/web/colors.png) · [滤镜展开](docs/screenshots/web/filters.png) · [保存菜单](docs/screenshots/web/save.png) · [帮助](docs/screenshots/web/help.png)。
 
 ## 浏览器与通信
 

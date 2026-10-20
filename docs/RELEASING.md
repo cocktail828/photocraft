@@ -56,7 +56,7 @@ npx playwright install --with-deps chromium firefox webkit
 npm run test:web
 ```
 
-可以通过 `PHOTOCRAFT_BASE_URL` 指定服务地址，通过 `PHOTOCRAFT_SCREENSHOT_DIR` 指定截图目录。默认顺序运行三种引擎，可用 `PHOTOCRAFT_BROWSERS=webkit` 等选择单一引擎。WebKit 是 Safari 引擎检查，上线前仍应在目标 macOS / iOS Safari 验证。完整的浏览器检查涵盖草稿隔离、裁剪缩放拒绝、应用、画笔、增强、压缩、下载、原图比较、撤销、颜色弹窗、配置接口禁用与移动布局。
+可以通过 `PHOTOCRAFT_BASE_URL` 指定服务地址，通过 `PHOTOCRAFT_SCREENSHOT_DIR` 指定截图目录。默认顺序运行三种引擎，可用 `PHOTOCRAFT_BROWSERS=webkit` 等选择单一引擎。WebKit 是 Safari 引擎检查，上线前仍应在目标 macOS / iOS Safari 验证。完整的浏览器检查涵盖草稿隔离、裁剪缩放拒绝、应用、画笔、增强、压缩、下载、原图比较、撤销、内嵌色板、参数弹窗、保存菜单、配置接口禁用与移动布局。
 
 ## CI 和 tag 发布
 
